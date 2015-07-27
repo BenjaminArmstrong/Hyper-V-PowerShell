@@ -1,4 +1,4 @@
-$Global:SCRIPT_NAME = "Invoke-ImageFactory.ps1";
+﻿$Global:SCRIPT_NAME = "Invoke-ImageFactory.ps1";
 $Global:SCRIPT_VERSION = "1.0.0.0";
 $Global:SCRIPT_CLASSIFICATION = [string]::Format("{0} {1}", $Global:SCRIPT_NAME, $Global:SCRIPT_VERSION);
 
@@ -343,7 +343,7 @@ Test-Resource -Path "$($Global:DIRECTORY_RESOURCES)\Convert-WindowsImage.ps1";
 Test-VirtualSwitch -Name $Global:CONFIGURATION["VirtualSwitchName"];
 
 ### Load Convert-WindowsImage
-. "$($Global:DIRECTORY_WORKING)\Convert-WindowsImage.ps1"
+. "$($Global:DIRECTORY_RESOURCES)\Convert-WindowsImage.ps1";
 
 ### Sysprep unattend XML
 $unattendSource = [xml]@"
