@@ -1,5 +1,4 @@
-# Update globals
-$Global:SCRIPT_NAME = "Factory.ps1";
+$Global:SCRIPT_NAME = "Invoke-ImageFactory.ps1";
 $Global:SCRIPT_VERSION = "1.0.0.0";
 $Global:SCRIPT_CLASSIFICATION = [string]::Format("{0} {1}", $Global:SCRIPT_NAME, $Global:SCRIPT_VERSION);
 
