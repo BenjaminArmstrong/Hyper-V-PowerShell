@@ -1,4 +1,24 @@
-﻿$Global:SCRIPT_NAME = "Invoke-ImageFactory.ps1";
+﻿<#
+	NOTES
+		
+	.SYNOPSIS
+		Invoke-ImageFactory.ps1 is based upon work of Ben Armstrong for creating up-to-date Windows images.
+  
+	.DESCRIPTION
+		This script is used to create up-to-date sysprepped Windows images which can be used for deployments.
+
+	.LINK
+		https://github.com/BenjaminArmstrong/Hyper-V-PowerShell
+		https://github.com/peterschen/Hyper-V-PowerShell
+#>
+
+[CmdletBinding()]
+
+param
+(
+);
+
+$Global:SCRIPT_NAME = "Invoke-ImageFactory.ps1";
 $Global:SCRIPT_VERSION = "1.0.0.0";
 $Global:SCRIPT_CLASSIFICATION = [string]::Format("{0} {1}", $Global:SCRIPT_NAME, $Global:SCRIPT_VERSION);
 
