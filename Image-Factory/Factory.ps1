@@ -288,24 +288,60 @@ function MountVHDandRunBlock
 	Start-Sleep -Seconds 2;
 }
 
+function Test-Resource
+{
+	param
+	(
+		[string] $Path,
+		[string] $System = $null
+	);
+
+	if(-not (Test-Path -Path $Path))
+	{
+		if($null -eq $System)
+		{
+			$System = $Global:SCRIPT_CLASSIFICATION;
+		}
+
+		Logger $System "Resource '$($Path)' could not be found";
+		exit;
+	}
+}
+
+function Test-VirtualSwitch
+{
+	[CmdletBinding()]
+
+	param
+	(
+		[string] $Name
+	);
+
+	process
+	{
+		$switch = Get-VMSwitch -Name $Name -ErrorAction SilentlyContinue;
+
+		if($null -eq $switch)
+		{
+			Logger $Global:SCRIPT_CLASSIFICATION "Could not find virtual switch '$($Name)'";
+			exit;
+		}
+	}
+}
+
 # Load configuration
 Get-Configuration;
 
+# Update globals
 $Global:DIRECTORY_ROOT = $Global:CONFIGURATION["RootDirectory"];
 $Global:DIRECTORY_WORKING = "$($Global:DIRECTORY_ROOT)\$($Global:CONFIGURATION["WorkingDirectory"])";
 $Global:DIRECTORY_BASES = "$($Global:DIRECTORY_ROOT)\$($Global:CONFIGURATION["BasesDirectory"])";
 $Global:DIRECTORY_RESOURCES = "$($Global:DIRECTORY_ROOT)\$($Global:CONFIGURATION["ResourcesDirectory"])";
 $Global:DIRECTORY_SHARE = "$($Global:DIRECTORY_ROOT)\$($Global:CONFIGURATION["ShareDirectory"])";
 
-$logFile = "$($Global:DIRECTORY_SHARE)\$($Global:CONFIGURATION["CsvFile"])";
-$factoryVMName = $Global:CONFIGURATION["VirtualMachineName"];
-$virtualSwitchName = $Global:CONFIGURATION["VirtualSwitchName"];
-$ResourceDirectory = "$($Global:DIRECTORY_RESOURCES)\Bits";
-$Organization = $Global:CONFIGURATION["Organization"];
-$Owner = $Global:CONFIGURATION["Owner"];
-$Timezone = $Global:CONFIGURATION["Timezone"];
-$adminPassword = $Global:CONFIGURATION["AdminPassword"];
-$userPassword = $Global:CONFIGURATION["UserPassword"];
+### Test resources
+Test-Resource -Path "$($Global:DIRECTORY_RESOURCES)\Convert-WindowsImage.ps1";
+Test-VirtualSwitch -Name $Global:CONFIGURATION["VirtualSwitchName"];
 
 ### Load Convert-WindowsImage
 . "$($Global:DIRECTORY_WORKING)\Convert-WindowsImage.ps1"
@@ -467,6 +503,9 @@ function RunTheFactory
 	);
 
 	logger $FriendlyName "Starting a new cycle!";
+
+	# Test if resource exists
+	Test-Resource -Path $ISOFile -System $FriendlyName;
 
 	# Setup a bunch of variables 
 	$sysprepNeeded = $true
