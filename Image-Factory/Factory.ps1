@@ -1,30 +1,3 @@
-$workingDir = "D:\ImageFactory"
-$logFile = "$($workingDir)\Share\Details.csv"
-$factoryVMName = "Factory VM"
-$virtualSwitchName = "Virtual Switch"
-$ResourceDirectory = "$($workingDir)\Resources\Bits" 
-$Organization = "The Power Elite"
-$Owner = "Ben Armstrong"
-$Timezone = "Pacific Standard Time"
-$adminPassword = "P@ssw0rd"
-$userPassword = "P@ssw0rd"
-
-# Keys
-$Windows81Key = ""
-$Windows2012R2Key = ""
-$Windows8Key = ""
-$Windows2012Key = ""
-
-# ISOs /  WIMs
-$2012Image = "$($workingDir)\ISOs\en_windows_server_2012_x64_dvd_915478.wim"
-$2012R2Image = "$($workingDir)\ISOs\en_windows_server_2012_r2_x64_dvd_2707946.wim"
-$8x86Image = "$($workingDir)\ISOs\en_windows_8_x86_dvd_915417.wim"
-$8x64Image = "$($workingDir)\ISOs\en_windows_8_x64_dvd_915440.wim"
-$81x86Image = "$($workingDir)\ISOs\en_windows_8_1_x86_dvd_2707392.wim"
-$81x64Image = "$($workingDir)\ISOs\en_windows_8_1_x64_dvd_2707217.wim"
-
-$startTime = get-date
-
 ### Load Convert-WindowsImage
 . "$($workingDir)\Convert-WindowsImage.ps1"
 
@@ -112,8 +85,9 @@ $unattendSource = [xml]@"
 function CSVLogger {
     param
     (
-        [string] $vhd, 
-        [switch] $sysprepped
+        [string] $CsvFile,
+		[string] $VhdFile, 
+        [switch] $Sysprepped
     );
 
     $createLogFile = $false;
@@ -122,13 +96,13 @@ function CSVLogger {
     $newEntry = $null;
 
     # Check if the log file exists
-    if (-not (Test-Path $logFile))
+    if (-not (Test-Path $CsvFile))
     {
         $createLogFile = $true;
     }
     else
     {
-        $logCsv = import-csv $logFile;
+        $logCsv = Import-Csv $CsvFile;
 
         if (($logCsv.Image -eq $null) -or `
             ($logCsv.Created -eq $null) -or `
@@ -136,7 +110,7 @@ function CSVLogger {
             ($logCsv.Checked -eq $null)) 
         {
             # Something is wrong with the log file
-            cleanupFile $logFile;
+            cleanupFile $CsvFile;
             $createLogFile = $true;
         }
     }
@@ -147,18 +121,18 @@ function CSVLogger {
     } 
     else 
     {
-        $logCsv = Import-Csv $logFile;
+        $logCsv = Import-Csv $CsvFile;
     }
 
     # If we find an entry for the VHD, update it
     foreach ($entry in $logCsv)
     {
-        if ($entry.Image -eq $vhd)
+        if ($entry.Image -eq $VhdFile)
         {
             $entryExists = $true;
             $entry.Checked = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString());
             
-            if ($sysprepped) 
+            if ($Sysprepped) 
             {
                 $entry.Sysprepped = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString());
             }
@@ -169,7 +143,7 @@ function CSVLogger {
     if (-not $entryExists) 
     {
         $newEntry = New-Object PSObject -Property @{
-            Image = $vhd
+            Image = $VhdFile
             Created = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
             Sysprepped = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
             Checked = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
@@ -177,10 +151,10 @@ function CSVLogger {
     }
 
     # Write out the CSV file
-    $logCsv | Export-CSV $logFile -NoTypeInformation;
+    $logCsv | Export-CSV $CsvFile -NoTypeInformation;
     if (-not ($newEntry -eq $null)) 
     {
-        $newEntry | Export-CSV $logFile -NoTypeInformation -Append;
+        $newEntry | Export-CSV $CsvFile -NoTypeInformation -Append;
     }
 }
 
@@ -231,6 +205,11 @@ function makeUnattendFile
 {
     param
     (
+		[string] $Organization,
+		[string] $Owner,
+		[string] $Timezone,
+		[string] $AdminPassword,
+		[string] $UserPassword,
         [string] $key, 
         [string] $logonCount, 
         [string] $filePath, 
@@ -248,13 +227,13 @@ function makeUnattendFile
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.RegisteredOrganization = $Organization};
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.RegisteredOwner = $Owner};
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.TimeZone = $Timezone};
-    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.AdministratorPassword.Value = $adminPassword};
-    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.Password.Value = $adminPassword};
+    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.AdministratorPassword.Value = $AdminPassword};
+    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.Password.Value = $AdminPassword};
     GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.LogonCount = $logonCount};
 
     if ($desktop)
     {
-        GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.LocalAccounts.LocalAccount.Password.Value = $userPassword};
+        GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.LocalAccounts.LocalAccount.Password.Value = $UserPassword};
     }
     else
     {
@@ -279,14 +258,16 @@ function createRunAndWaitVM
 {
     param
     (
+		[string] $VirtualMachineName,
+		[string] $VirtualSwitchName,
         [string] $vhd, 
         [string] $gen
     );
     
     # Function for whenever I have a VHD that is ready to run
-    New-VM $factoryVMName -MemoryStartupBytes 2048mb -VHDPath $vhd -Generation $Gen -SwitchName $virtualSwitchName | Out-Null;
-    set-vm -Name $factoryVMName -ProcessorCount 2;
-    Start-VM $factoryVMName;
+    New-VM $VirtualMachineName -MemoryStartupBytes 2048mb -VHDPath $vhd -Generation $Gen -SwitchName $VirtualSwitchName | Out-Null;
+    Set-VM -Name $VirtualMachineName -ProcessorCount 2;
+    Start-VM $VirtualMachineName;
 
     # Give the VM a moment to start before we start checking for it to stop
     Sleep -Seconds 10;
@@ -294,16 +275,16 @@ function createRunAndWaitVM
     # Wait for the VM to be stopped for a good solid 5 seconds
     do
     {
-        $state1 = (Get-VM | ? name -eq $factoryVMName).State;
+        $state1 = (Get-VM | ? name -eq $VirtualMachineName).State;
         Start-Sleep -Seconds 5;
         
-        $state2 = (Get-VM | ? name -eq $factoryVMName).State;
+        $state2 = (Get-VM | ? name -eq $VirtualMachineName).State;
         Start-Sleep -Seconds 5;
     } 
     until (($state1 -eq "Off") -and ($state2 -eq "Off"))
 
     # Clean up the VM
-    Remove-VM $factoryVMName -Force;
+    Remove-VM $VirtualMachineName -Force;
 }
 
 function MountVHDandRunBlock 
@@ -401,6 +382,16 @@ function RunTheFactory
 {
     param
     (
+		[string] $WorkingDirectory,
+		[string] $ResourceDirectory,
+		[string] $CsvFilePath,
+		[string] $VirtualMachineName,
+		[string] $VirtualSwitchName,
+		[string] $Organization,
+		[string] $Owner,
+		[string] $Timezone,
+		[string] $AdminPassword,
+		[string] $UserPassword,
         [string]$FriendlyName,
         [string]$ISOFile,
         [string]$ProductKey,
@@ -415,10 +406,10 @@ function RunTheFactory
 
     # Setup a bunch of variables 
     $sysprepNeeded = $true;
-    $baseVHD = "$($workingDir)\bases\$($FriendlyName)-base.vhdx";
-    $updateVHD = "$($workingDir)\$($FriendlyName)-update.vhdx";
-    $sysprepVHD = "$($workingDir)\$($FriendlyName)-sysprep.vhdx";
-    $finalVHD = "$($workingDir)\share\$($FriendlyName).vhdx";
+    $baseVHD = "$($WorkingDirectory)\bases\$($FriendlyName)-base.vhdx";
+    $updateVHD = "$($WorkingDirectory)\$($FriendlyName)-update.vhdx";
+    $sysprepVHD = "$($WorkingDirectory)\$($FriendlyName)-sysprep.vhdx";
+    $finalVHD = "$($WorkingDirectory)\share\$($FriendlyName).vhdx";
    
     $VHDPartitionStyle = "MBR";
     $Gen = 1;
@@ -431,9 +422,9 @@ function RunTheFactory
     logger $FriendlyName "Checking for existing Factory VM";
 
     # Check if there is already a factory VM - and kill it if there is
-    if ((Get-VM | ? Name -eq $factoryVMName).Count -gt 0)
+    if ((Get-VM | ? Name -eq $VirtualMachineName).Count -gt 0)
     {
-        Stop-VM $factoryVMName -TurnOff -Confirm:$false -Passthru | Remove-VM -Force;
+        Stop-VM $VirtualMachineName -TurnOff -Confirm:$false -Passthru | Remove-VM -Force;
     }
 
     # Check for a base VHD
@@ -446,20 +437,21 @@ function RunTheFactory
         logger $FriendlyName "Creating unattend file for base VHD";
 
         # Logon count is just "large number"
-        makeUnattendFile -key $ProductKey -logonCount "1000" -filePath "$($workingDir)\unattend.xml" -desktop $desktop -is32bit $is32bit;
+        makeUnattendFile -Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $AdminPassword -UserPassword $UserPassword `
+			-key $ProductKey -logonCount "1000" -filePath "$($WorkingDirectory)\unattend.xml" -desktop $desktop -is32bit $is32bit;
       
         # Time to create the base VHD
         logger $FriendlyName "Create base VHD using Convert-WindowsImage.ps1";
         $ConvertCommand = "Convert-WindowsImage";
         $ConvertCommand = $ConvertCommand + " -SourcePath `"$ISOFile`" -VHDPath `"$baseVHD`"";
-        $ConvertCommand = $ConvertCommand + " -SizeBytes 80GB -VHDFormat VHDX -UnattendPath `"$($workingDir)\unattend.xml`"";
+        $ConvertCommand = $ConvertCommand + " -SizeBytes 80GB -VHDFormat VHDX -UnattendPath `"$($WorkingDirectory)\unattend.xml`"";
         $ConvertCommand = $ConvertCommand + " -Edition $SKUEdition -VHDPartitionStyle $VHDPartitionStyle";
 
         Invoke-Expression "& $ConvertCommand";
 
         # Clean up unattend file - we don't need it any more
         logger $FriendlyName "Remove unattend file now that that is done";
-        cleanupFile "$($workingDir)\unattend.xml";
+        cleanupFile "$($WorkingDirectory)\unattend.xml";
 
         logger $FriendlyName "Mount VHD and copy bits in, also set startup file";
         MountVHDandRunBlock $baseVHD {
@@ -473,7 +465,7 @@ function RunTheFactory
         }
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $baseVHD $Gen;
+        createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $baseVHD -gen $Gen;
 
         # Remove Page file
         logger $FriendlyName "Removing the page file";
@@ -505,7 +497,7 @@ function RunTheFactory
         }
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $updateVHD $Gen;
+        createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $updateVHD -gen $Gen;
 
         # Mount the VHD
         logger $FriendlyName "Mount the differencing disk";
@@ -540,7 +532,7 @@ function RunTheFactory
         else 
         {
             logger $FriendlyName "Delete the differencing disk"; 
-            CSVLogger $finalVHD;
+            CSVLogger -CsvFile $CsvFilePath -VhdFile $finalVHD;
             cleanupFile $updateVHD;
         }
     }
@@ -569,7 +561,8 @@ function RunTheFactory
             else
             {
                 # Make unattend file
-                makeUnattendFile -key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
+                makeUnattendFile -Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $AdminPassword -UserPassword $UserPassword `
+					-key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
             }
             
             # Make the logon script
@@ -578,7 +571,7 @@ function RunTheFactory
         }
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $sysprepVHD $Gen;
+        createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $sysprepVHD -gen $Gen;
 
         logger $FriendlyName "Mount the differencing disk and cleanup files";
         MountVHDandRunBlock $sysprepVHD {
@@ -609,22 +602,92 @@ function RunTheFactory
         logger $FriendlyName "Convert differencing disk into pristine base image";
         Convert-VHD -Path $sysprepVHD -DestinationPath $finalVHD -VHDType Dynamic;
         logger $FriendlyName "Delete differencing disk";
-        CSVLogger $finalVHD -sysprepped;
+        CSVLogger -CsvFile $CsvFilePath -VhdFile $finalVHD -Sysprepped;
         cleanupFile $sysprepVHD;
     }
 }
 
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-RunTheFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+### Configuration
+
+$workingDir = "D:\ImageFactory"
+$logFile = "$($workingDir)\Share\Details.csv"
+$factoryVMName = "Factory VM"
+$virtualSwitchName = "Virtual Switch"
+$ResourceDirectory = "$($workingDir)\Resources\Bits" 
+$Organization = "The Power Elite"
+$Owner = "Ben Armstrong"
+$Timezone = "Pacific Standard Time"
+$adminPassword = "P@ssw0rd"
+$userPassword = "P@ssw0rd"
+
+# Keys
+$Windows81Key = ""
+$Windows2012R2Key = ""
+$Windows8Key = ""
+$Windows2012Key = ""
+
+# ISOs /  WIMs
+$2012Image = "$($workingDir)\ISOs\en_windows_server_2012_x64_dvd_915478.wim"
+$2012R2Image = "$($workingDir)\ISOs\en_windows_server_2012_r2_x64_dvd_2707946.wim"
+$8x86Image = "$($workingDir)\ISOs\en_windows_8_x86_dvd_915417.wim"
+$8x64Image = "$($workingDir)\ISOs\en_windows_8_x64_dvd_915440.wim"
+$81x86Image = "$($workingDir)\ISOs\en_windows_8_1_x86_dvd_2707392.wim"
+$81x64Image = "$($workingDir)\ISOs\en_windows_8_1_x64_dvd_2707217.wim"
+
+### Factory execution
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
+
+RunTheFactory -WorkingDirectory $workingDir -ResourceDirectory $ResourceDirectory -CsvFilePath $logFile -VirtualMachineName $factoryVMName -VirtualSwitchName $virtualSwitchName `
+	-Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $adminPassword -UserPassword $userPassword `
+	-FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
