@@ -334,6 +334,98 @@ function Get-ParameterOrGlobalValue
 	}
 }
 
+function Import-Configuration
+{
+	[CmdletBinding()]
+
+    param
+	(
+	);
+
+	process
+	{
+		$sections = @(
+			"appSettings"
+			"ImageFactory.Images"
+		);
+		
+		$path = Get-ScriptDirectory;
+		$scriptName = Get-ScriptName;
+
+		$psConfigPath = "$($path)\$($scriptName.Replace(".ps1", "config.ps1"))";
+		$xmlConfigPath = "$($path)\$($scriptName).config";
+
+		$Global:IF_Images = @{};
+
+		if(Test-Path -Path $xmlConfigPath)
+		{
+			$config = [xml](Get-Content -Path $xmlConfigPath);
+
+			foreach($section in $sections)
+			{
+				foreach ($node in $config.configuration.$section.add)
+				{
+					if($section -eq "appSettings")
+					{
+						Set-Variable -Name "IF_$($node.Key)" -Value $node.Value -Force;
+					}
+					elseif($section -eq "ImageFactory.Images")
+					{
+						$properties = @{
+							Name = $node.Name
+							Path = $node.Path
+							Key = $node.Key
+							Edition = $node.Edition
+							IsDesktop = $node.IsDesktop
+							Is32Bit = $node.Is32Bit
+							VmGeneration = $node.VmGeneration
+							GenericSysprep = $node.GenericSysprep
+						};
+
+						$Global:IF_Images += New-Object PSObject -Property $properties;
+					}
+				}
+			}
+		}
+
+		if(Test-Path -Path $psConfigPath)
+		{
+			# Dot-source PowerShell based configuration
+			. $psConfigPath;
+		}
+	}
+}
+
+function Get-ScriptName
+{
+	[CmdletBinding()]
+
+	param
+	(
+	);
+
+	process
+	{
+		$invocation = (Get-Variable MyInvocation -Scope 2).Value;
+		return Split-Path $invocation.MyCommand.Name;
+	}	
+}
+
+function Get-ScriptDirectory
+{
+	[CmdletBinding()]
+
+	param
+	(
+	);
+
+	process
+	{
+		$invocation = (Get-Variable MyInvocation -Scope 2).Value;
+		return Split-Path $invocation.MyCommand.Path;
+	}
+}
+
 ### Update script block
 $updateCheckScriptBlock = {
     # Clean up unattend file if it is there
@@ -667,46 +759,31 @@ function RunTheFactory
 	}
 }
 
-### Configuration
+try
+{
+	# Import configuration from dot-source ps1 or parsed xml
+	Import-Configuration;
 
-$Global:IF_WorkingDirectory = "D:\ImageFactory";
-$Global:IF_ResourceDirectory = "$($Global:IF_WorkingDirectory)\resources\Bits";
-$Global:IF_CsvFilePath = "$($Global:IF_WorkingDirectory)\Share\Details.csv";
-$Global:IF_VirtualMachineName = "Factory VM";
-$Global:IF_VirtualSwitchName = "Virtual Switch";
-$Global:IF_Organization = "The Power Elite";
-$Global:IF_Owner = "Ben Armstrong";
-$Global:IF_Timezone = "Pacific Standard Time";
-$Global:IF_AdminPassword = "P@ssw0rd";
-$Global:IF_UserPassword = "P@ssw0rd";
+	# Main processing loop
+	foreach($image in $Global:IF_Images)
+	{
+		$isDesktop = [bool]::Parse($image.IsDesktop);
+		$is32Bit = [bool]::Parse($image.Is32Bit);
+		$genericSysprep = [bool]::Parse($image.GenericSysprep);
 
-# Keys
-$Windows81Key = ""
-$Windows2012R2Key = ""
-$Windows8Key = ""
-$Windows2012Key = ""
-
-# ISOs /  WIMs
-$2012Image = "$($workingDir)\ISOs\en_windows_server_2012_x64_dvd_915478.wim"
-$2012R2Image = "$($workingDir)\ISOs\en_windows_server_2012_r2_x64_dvd_2707946.wim"
-$8x86Image = "$($workingDir)\ISOs\en_windows_8_x86_dvd_915417.wim"
-$8x64Image = "$($workingDir)\ISOs\en_windows_8_x64_dvd_915440.wim"
-$81x86Image = "$($workingDir)\ISOs\en_windows_8_1_x86_dvd_2707392.wim"
-$81x64Image = "$($workingDir)\ISOs\en_windows_8_1_x64_dvd_2707217.wim"
-
-### Factory execution
-
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-RunTheFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+		if($image.VmGeneration -eq 2)
+		{
+			RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				-desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep -Generation2;
+		}
+		else
+		{
+			RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				-desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep;
+		}
+	}
+}
+catch
+{
+	throw $_;
+}
