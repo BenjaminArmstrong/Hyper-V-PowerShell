@@ -203,12 +203,12 @@ function cleanupFile
 {
     param
     (
-        [string]$file
+        [string] $file
     )
     
     if (Test-Path $file) 
     {
-        Remove-Item $file
+        Remove-Item $file -Recurse;
     }
 }
 
@@ -385,6 +385,12 @@ $postSysprepScriptBlock = {
     {
         Remove-Item -Force "$ENV:SystemDrive\Unattend.xml";
     }
+
+    # Clean up bits
+    if(Test-Path "$ENV:SystemDrive\Bits")
+    {
+        Remove-Item -Force -Recurse "$ENV:SystemDrive\Bits";
+    } 
      
     # Put any code you want to run Post sysprep here
     Invoke-Expression 'shutdown -r -t 0';
@@ -401,7 +407,8 @@ function RunTheFactory
         [string]$SKUEdition,
         [bool]$desktop = $false,
         [bool]$is32bit = $false,
-        [switch]$Generation2
+        [switch]$Generation2,
+        [bool] $GenericSysprep = $false
     );
 
     logger $FriendlyName "Starting a new cycle!"
@@ -456,6 +463,8 @@ function RunTheFactory
 
         logger $FriendlyName "Mount VHD and copy bits in, also set startup file";
         MountVHDandRunBlock $baseVHD {
+            cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
+
             # Copy ResourceDirectory in
             Copy-Item ($ResourceDirectory) -Destination ($driveLetter + ":\") -Recurse;
             
@@ -544,20 +553,29 @@ function RunTheFactory
 
     if ($sysprepNeeded)
     {
-            # create new diff to sysprep
-            logger $FriendlyName "Need to run Sysprep";
-            logger $FriendlyName "Creating differencing disk";
-            cleanupFile $sysprepVHD; new-vhd -Path $sysprepVHD -ParentPath $baseVHD | Out-Null;
+        # create new diff to sysprep
+        logger $FriendlyName "Need to run Sysprep";
+        logger $FriendlyName "Creating differencing disk";
+        cleanupFile $sysprepVHD; new-vhd -Path $sysprepVHD -ParentPath $baseVHD | Out-Null;
 
-            logger $FriendlyName "Mount the differencing disk and copy in files";
-            MountVHDandRunBlock $sysprepVHD {
+        logger $FriendlyName "Mount the differencing disk and copy in files";
+        MountVHDandRunBlock $sysprepVHD {
+            $sysprepScriptBlockString = $sysprepScriptBlock | Out-String;
+
+            if($GenericSysprep)
+            {
+                $sysprepScriptBlockString = $sysprepScriptBlockString.Replace(' `/unattend:"$unattendedXmlPath"', "");
+            }
+            else
+            {
                 # Make unattend file
                 makeUnattendFile -key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
-        
-                # Make the logon script
-                cleanupFile "$($driveLetter):\Bits\Logon.ps1";
-                $sysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
             }
+            
+            # Make the logon script
+            cleanupFile "$($driveLetter):\Bits\Logon.ps1";
+            $sysprepScriptBlockString | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+        }
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
         createRunAndWaitVM $sysprepVHD $Gen;
@@ -565,10 +583,18 @@ function RunTheFactory
         logger $FriendlyName "Mount the differencing disk and cleanup files";
         MountVHDandRunBlock $sysprepVHD {
             cleanupFile "$($driveLetter):\Bits\unattend.xml";
-                           
-            # Make the logon script
             cleanupFile "$($driveLetter):\Bits\Logon.ps1";
-            $postSysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+
+            if(-not $GenericSysprep)
+            {
+                # Make the logon script
+                $postSysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+            }
+            else
+            {
+                # Cleanup \Bits as the postSysprepScriptBlock is not run anymore
+                cleanupFile "$($driveLetter):\Bits";
+            }
         }
 
         # Remove Page file
