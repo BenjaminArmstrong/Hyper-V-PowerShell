@@ -9,6 +9,12 @@ For more information - read here: http://blogs.msdn.com/b/virtual_pc_guy/archive
 
 # Change Log #
 
+8/10/15 -
+
+* Extended the externalization of the configuration to use either .ps1 based configuration or .xml based configuration
+* Extended the main function call to accept $Global configuration values to prevent variable pollution but still limit the number of parameters to be passed
+* Implemented separate configurable directories/paths for working/resources/log file
+
 8/1/15 -
 
 * Tested with Windows 10 (yay!)
@@ -28,7 +34,6 @@ This is the list of things currently in my "to do" list.  Feel free to tackle an
 
 * Better error handling around missing files (convert-windowsimage, factoryvariables, PSUpdate, etc...)
 * MD5 summing for virtual hard drives in the share folder
-* Make variables for the build and share directories - so they do not have to be under the working directory
 * Add support for static IP addresses inside the factory VM - so the script works when DHCP does not
 * Add support for connecting the factory VM to VLANs
 * Add support for Windows 7 / 2008 R2 guest operating systems

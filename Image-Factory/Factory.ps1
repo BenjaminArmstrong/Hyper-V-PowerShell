@@ -1,11 +1,3 @@
-# Load variables from a seperate file - this when you pull down the latest factory file you can keep your paths / product keys etc...
-. .\FactoryVariables.ps1
-
-$startTime = get-date
-
-### Load Convert-WindowsImage
-. "$($workingDir)\Convert-WindowsImage.ps1"
-
 ### Sysprep unattend XML
 $unattendSource = [xml]@"
 <?xml version="1.0" encoding="utf-8"?>
@@ -90,8 +82,9 @@ $unattendSource = [xml]@"
 function CSVLogger {
     param
     (
-        [string] $vhd, 
-        [switch] $sysprepped
+        [string] $CsvFile,
+		[string] $VhdFile, 
+        [switch] $Sysprepped
     );
 
     $createLogFile = $false;
@@ -100,13 +93,13 @@ function CSVLogger {
     $newEntry = $null;
 
     # Check if the log file exists
-    if (-not (Test-Path $logFile))
+    if (-not (Test-Path $CsvFile))
     {
         $createLogFile = $true;
     }
     else
     {
-        $logCsv = import-csv $logFile;
+        $logCsv = Import-Csv $CsvFile;
 
         if (($logCsv.Image -eq $null) -or `
             ($logCsv.Created -eq $null) -or `
@@ -114,7 +107,7 @@ function CSVLogger {
             ($logCsv.Checked -eq $null)) 
         {
             # Something is wrong with the log file
-            cleanupFile $logFile;
+            cleanupFile $CsvFile;
             $createLogFile = $true;
         }
     }
@@ -125,18 +118,18 @@ function CSVLogger {
     } 
     else 
     {
-        $logCsv = Import-Csv $logFile;
+        $logCsv = Import-Csv $CsvFile;
     }
 
     # If we find an entry for the VHD, update it
     foreach ($entry in $logCsv)
     {
-        if ($entry.Image -eq $vhd)
+        if ($entry.Image -eq $VhdFile)
         {
             $entryExists = $true;
             $entry.Checked = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString());
             
-            if ($sysprepped) 
+            if ($Sysprepped) 
             {
                 $entry.Sysprepped = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString());
             }
@@ -147,7 +140,7 @@ function CSVLogger {
     if (-not $entryExists) 
     {
         $newEntry = New-Object PSObject -Property @{
-            Image = $vhd
+            Image = $VhdFile
             Created = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
             Sysprepped = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
             Checked = ((Get-Date).ToShortDateString() + "::" + (Get-Date).ToShortTimeString())
@@ -155,10 +148,10 @@ function CSVLogger {
     }
 
     # Write out the CSV file
-    $logCsv | Export-CSV $logFile -NoTypeInformation;
+    $logCsv | Export-CSV $CsvFile -NoTypeInformation;
     if (-not ($newEntry -eq $null)) 
     {
-        $newEntry | Export-CSV $logFile -NoTypeInformation -Append;
+        $newEntry | Export-CSV $CsvFile -NoTypeInformation -Append;
     }
 }
 
@@ -222,6 +215,11 @@ function makeUnattendFile
 {
     param
     (
+		[string] $Organization,
+		[string] $Owner,
+		[string] $Timezone,
+		[string] $AdminPassword,
+		[string] $UserPassword,
         [string] $key, 
         [string] $logonCount, 
         [string] $filePath, 
@@ -239,13 +237,13 @@ function makeUnattendFile
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.RegisteredOrganization = $Organization};
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.RegisteredOwner = $Owner};
     GetUnattendChunk "specialize" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.TimeZone = $Timezone};
-    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.AdministratorPassword.Value = $adminPassword};
-    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.Password.Value = $adminPassword};
+    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.AdministratorPassword.Value = $AdminPassword};
+    GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.Password.Value = $AdminPassword};
     GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.AutoLogon.LogonCount = $logonCount};
 
     if ($desktop)
     {
-        GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.LocalAccounts.LocalAccount.Password.Value = $userPassword};
+        GetUnattendChunk "oobeSystem" "Microsoft-Windows-Shell-Setup" $unattend | %{$_.UserAccounts.LocalAccounts.LocalAccount.Password.Value = $UserPassword};
     }
     else
     {
@@ -270,14 +268,16 @@ function createRunAndWaitVM
 {
     param
     (
+		[string] $VirtualMachineName,
+		[string] $VirtualSwitchName,
         [string] $vhd, 
         [string] $gen
     );
     
     # Function for whenever I have a VHD that is ready to run
-    New-VM $factoryVMName -MemoryStartupBytes 2048mb -VHDPath $vhd -Generation $Gen -SwitchName $virtualSwitchName | Out-Null;
-    set-vm -Name $factoryVMName -ProcessorCount 2;
-    Start-VM $factoryVMName;
+    New-VM $VirtualMachineName -MemoryStartupBytes 2048mb -VHDPath $vhd -Generation $Gen -SwitchName $VirtualSwitchName | Out-Null;
+    Set-VM -Name $VirtualMachineName -ProcessorCount 2;
+    Start-VM $VirtualMachineName;
 
     # Give the VM a moment to start before we start checking for it to stop
     Sleep -Seconds 10;
@@ -285,16 +285,16 @@ function createRunAndWaitVM
     # Wait for the VM to be stopped for a good solid 5 seconds
     do
     {
-        $state1 = (Get-VM | ? name -eq $factoryVMName).State;
+        $state1 = (Get-VM | ? name -eq $VirtualMachineName).State;
         Start-Sleep -Seconds 5;
         
-        $state2 = (Get-VM | ? name -eq $factoryVMName).State;
+        $state2 = (Get-VM | ? name -eq $VirtualMachineName).State;
         Start-Sleep -Seconds 5;
     } 
     until (($state1 -eq "Off") -and ($state2 -eq "Off"))
 
     # Clean up the VM
-    Remove-VM $factoryVMName -Force;
+    Remove-VM $VirtualMachineName -Force;
 }
 
 function MountVHDandRunBlock 
@@ -313,6 +313,127 @@ function MountVHDandRunBlock
 
     # Wait 2 seconds for activity to clean up
     Start-Sleep -Seconds 2;
+}
+
+function Get-ParameterOrGlobalValue
+{
+	[CmdletBinding()]
+	
+	param
+	(
+		[string] $Name,
+		[string] $Value
+	);
+
+	process
+	{
+		$parameterValue = $Value;
+
+		if([string]::IsNullOrEmpty($parameterValue))
+		{
+			# Parameterized value is null so check global
+			$parameterValue = (Get-Variable -Name "IF_$($Name)" -Scope Global).Value;
+		}
+
+		if([string]::IsNullOrEmpty($parameterValue))
+		{
+			throw "Required parameter $($Name) was not provided";
+		}
+
+		return $parameterValue;
+	}
+}
+
+function Import-Configuration
+{
+	[CmdletBinding()]
+
+    param
+	(
+	);
+
+	process
+	{
+		$sections = @(
+			"appSettings"
+			"ImageFactory.Images"
+		);
+		
+		$path = Get-ScriptDirectory;
+		$scriptName = Get-ScriptName;
+
+		$psConfigPath = "$($path)\$($scriptName.Replace(".ps1", "config.ps1"))";
+		$xmlConfigPath = "$($path)\$($scriptName).config";
+
+		$Global:IF_Images = @();
+
+		if(Test-Path -Path $xmlConfigPath)
+		{
+			$config = [xml](Get-Content -Path $xmlConfigPath);
+
+			foreach($section in $sections)
+			{
+				foreach ($node in $config.configuration.$section.add)
+				{
+					if($section -eq "appSettings")
+					{
+						Set-Variable -Name "IF_$($node.Key)" -Scope "Global" -Value $node.Value -Force;
+					}
+					elseif($section -eq "ImageFactory.Images")
+					{
+						$properties = @{
+							Name = $node.Name
+							Path = $node.Path
+							Key = $node.Key
+							Edition = $node.Edition
+							IsDesktop = $node.IsDesktop
+							Is32Bit = $node.Is32Bit
+							VmGeneration = $node.VmGeneration
+							GenericSysprep = $node.GenericSysprep
+						};
+
+						$Global:IF_Images += New-Object PSObject -Property $properties;
+					}
+				}
+			}
+		}
+
+		if(Test-Path -Path $psConfigPath)
+		{
+			# Dot-source PowerShell based configuration
+			. $psConfigPath;
+		}
+	}
+}
+
+function Get-ScriptName
+{
+	[CmdletBinding()]
+
+	param
+	(
+	);
+
+	process
+	{
+		$invocation = (Get-Variable MyInvocation -Scope 2).Value;
+		return $invocation.MyCommand.Name;
+	}	
+}
+
+function Get-ScriptDirectory
+{
+	[CmdletBinding()]
+
+	param
+	(
+	);
+
+	process
+	{
+		$invocation = (Get-Variable MyInvocation -Scope 2).Value;
+		return Split-Path $invocation.MyCommand.Path;
+	}
 }
 
 ### Update script block
@@ -390,8 +511,34 @@ $postSysprepScriptBlock = {
 # This is the main function of this script
 function RunTheFactory
 {
+	<#
+        .SYNOPSIS
+			Creates or updates an VHD image with latest Windows Update patches and
+			creates a sysprepped golden image which can be used for deploying virtual
+			machines.
+           
+        .NOTES
+            To make the parametrization of this function easier, the parameters 
+			$ResourceDirectory, $CsvFilePath, $VirtualMachineName, 
+			$VirtualSwitchName, $Organization, $Owner, $Timezone, $AdminPassword and
+			$UserPassword can be omitted if $Global variables with the naming schema
+			$Global:IF_<VariableName> (e.g. $Global:IF_ResourceDirectory) are set.
+    #>
+
+	[CmdletBinding()]
+
     param
     (
+		[string] $WorkingDirectory,
+		[string] $ResourceDirectory,
+		[string] $CsvFilePath,
+		[string] $VirtualMachineName,
+		[string] $VirtualSwitchName,
+		[string] $Organization,
+		[string] $Owner,
+		[string] $Timezone,
+		[string] $AdminPassword,
+		[string] $UserPassword,
         [string]$FriendlyName,
         [string]$ISOFile,
         [string]$ProductKey,
@@ -402,226 +549,275 @@ function RunTheFactory
         [bool] $GenericSysprep = $false
     );
 
-    checkPath "$($workingdir)\Share";
-    checkPath "$($workingdir)\Bases";
+	process
+	{
+        logger $FriendlyName "Starting a new cycle!"
 
-    logger $FriendlyName "Starting a new cycle!"
+		# Check parameter values and/or retrieve global override
+		$WorkingDirectory = Get-ParameterOrGlobalValue -Name "WorkingDirectory" -Value $WorkingDirectory;
+		$ResourceDirectory = Get-ParameterOrGlobalValue -Name "ResourceDirectory" -Value $ResourceDirectory;
+		$CsvFilePath = Get-ParameterOrGlobalValue -Name "CsvFilePath" -Value $CsvFilePath;
+		$VirtualMachineName = Get-ParameterOrGlobalValue -Name "VirtualMachineName" -Value $VirtualMachineName;
+		$VirtualSwitchName = Get-ParameterOrGlobalValue -Name "VirtualSwitchName" -Value $VirtualSwitchName;
+		$Organization = Get-ParameterOrGlobalValue -Name "Organization" -Value $Organization;
+		$Owner = Get-ParameterOrGlobalValue -Name "Owner" -Value $Owner;
+		$Timezone = Get-ParameterOrGlobalValue -Name "Timezone" -Value $Timezone;
+		$AdminPassword = Get-ParameterOrGlobalValue -Name "AdminPassword" -Value $AdminPassword;
+		$UserPassword = Get-ParameterOrGlobalValue -Name "UserPassword" -Value $UserPassword;
 
-    # Setup a bunch of variables 
-    $sysprepNeeded = $true;
-    $baseVHD = "$($workingDir)\bases\$($FriendlyName)-base.vhdx";
-    $updateVHD = "$($workingDir)\$($FriendlyName)-update.vhdx";
-    $sysprepVHD = "$($workingDir)\$($FriendlyName)-sysprep.vhdx";
-    $finalVHD = "$($workingDir)\share\$($FriendlyName).vhdx";
-   
-    $VHDPartitionStyle = "MBR";
-    $Gen = 1;
-    if ($Generation2) 
-    {
-        $VHDPartitionStyle = "GPT";
-        $Gen = 2;
-    }
+		checkPath "$($WorkingDirectory)";
+		checkPath "$($ResourceDirectory)";
 
-    logger $FriendlyName "Checking for existing Factory VM";
-
-    # Check if there is already a factory VM - and kill it if there is
-    if ((Get-VM | ? Name -eq $factoryVMName).Count -gt 0)
-    {
-        Stop-VM $factoryVMName -TurnOff -Confirm:$false -Passthru | Remove-VM -Force;
-    }
-
-    # Check for a base VHD
-    if (-not (test-path $baseVHD))
-    {
-        # No base VHD - we need to create one
-        logger $FriendlyName "No base VHD!";
-
-        # Make unattend file
-        logger $FriendlyName "Creating unattend file for base VHD";
-
-        # Logon count is just "large number"
-        makeUnattendFile -key $ProductKey -logonCount "1000" -filePath "$($workingDir)\unattend.xml" -desktop $desktop -is32bit $is32bit;
-      
-        # Time to create the base VHD
-        logger $FriendlyName "Create base VHD using Convert-WindowsImage.ps1";
-        $ConvertCommand = "Convert-WindowsImage";
-        $ConvertCommand = $ConvertCommand + " -SourcePath `"$ISOFile`" -VHDPath `"$baseVHD`"";
-        $ConvertCommand = $ConvertCommand + " -SizeBytes 80GB -VHDFormat VHDX -UnattendPath `"$($workingDir)\unattend.xml`"";
-        $ConvertCommand = $ConvertCommand + " -Edition $SKUEdition -VHDPartitionStyle $VHDPartitionStyle";
-
-        Invoke-Expression "& $ConvertCommand";
-
-        # Clean up unattend file - we don't need it any more
-        logger $FriendlyName "Remove unattend file now that that is done";
-        cleanupFile "$($workingDir)\unattend.xml";
-
-        logger $FriendlyName "Mount VHD and copy bits in, also set startup file";
-        MountVHDandRunBlock $baseVHD {
-            cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
-
-            # Copy ResourceDirectory in
-            Copy-Item ($ResourceDirectory) -Destination ($driveLetter + ":\") -Recurse;
-            
-            # Create first logon script
-            $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
-        }
-
-        logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $baseVHD $Gen;
-
-        # Remove Page file
-        logger $FriendlyName "Removing the page file";
-        MountVHDandRunBlock $baseVHD {
-            attrib -s -h "$($driveLetter):\pagefile.sys";
-            cleanupFile "$($driveLetter):\pagefile.sys";
-        }
-
-        # Compact the base file
-        logger $FriendlyName "Compacting the base file";
-        Optimize-VHD -Path $baseVHD -Mode Full;
-    }
-    else
-    {
-        # The base VHD existed - time to check if it needs an update
-        logger $FriendlyName "Base VHD exists - need to check for updates";
-
-        # create new diff to check for updates
-        logger $FriendlyName "Create new differencing disk to check for updates";
-        cleanupFile $updateVHD;
-        New-VHD -Path $updateVHD -ParentPath $baseVHD | Out-Null;
-
-        logger $FriendlyName "Copy login file for update check, also make sure flag file is cleared"
-        MountVHDandRunBlock $updateVHD {
-            # Make the UpdateCheck script the logon script, make sure update flag file is deleted before we start
-            cleanupFile "$($driveLetter):\Bits\changesMade.txt";
-            cleanupFile "$($driveLetter):\Bits\Logon.ps1";
-            $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
-        }
-
-        logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $updateVHD $Gen;
-
-        # Mount the VHD
-        logger $FriendlyName "Mount the differencing disk";
-        $driveLetter = (Mount-VHD $updateVHD -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
-       
-        # Check to see if changes were made
-        logger $FriendlyName "Check to see if there were any updates";
-        if (Test-Path "$($driveLetter):\Bits\changesMade.txt") 
-        {
-            cleanupFile "$($driveLetter):\Bits\changesMade.txt";
-            logger $FriendlyName "Updates were found";
-        }
-        else 
-        {
-            logger $FriendlyName "No updates were found"; 
-            $sysprepNeeded = $false;
-        }
-
-        # Dismount
-        logger $FriendlyName "Dismount the differencing disk";
-        Dismount-VHD $updateVHD;
-
-        # Wait 2 seconds for activity to clean up
-        Start-Sleep -Seconds 2;
-
-        # If changes were made - merge them in.  If not, throw it away
-        if ($sysprepNeeded) 
-        {
-            logger $FriendlyName "Merge the differencing disk";
-            Merge-VHD -Path $updateVHD -DestinationPath $baseVHD;
-        }
-        else 
-        {
-            logger $FriendlyName "Delete the differencing disk"; 
-            CSVLogger $finalVHD;
-            cleanupFile $updateVHD;
-        }
-    }
-
-    # Final Check - if the final VHD is missing - we need to sysprep and make it
-    if (-not (Test-Path $finalVHD)) 
-    {
+        # Setup a bunch of variables 
         $sysprepNeeded = $true;
-    }
+		$baseVHD = "$($WorkingDirectory)\bases\$($FriendlyName)-base.vhdx";
+		$updateVHD = "$($WorkingDirectory)\$($FriendlyName)-update.vhdx";
+		$sysprepVHD = "$($WorkingDirectory)\$($FriendlyName)-sysprep.vhdx";
+		$finalVHD = "$($WorkingDirectory)\share\$($FriendlyName).vhdx";
+   
+        $VHDPartitionStyle = "MBR";
+        $Gen = 1;
+        if ($Generation2) 
+        {
+            $VHDPartitionStyle = "GPT";
+            $Gen = 2;
+        }
 
-    if ($sysprepNeeded)
-    {
-        # create new diff to sysprep
-        logger $FriendlyName "Need to run Sysprep";
-        logger $FriendlyName "Creating differencing disk";
-        cleanupFile $sysprepVHD; new-vhd -Path $sysprepVHD -ParentPath $baseVHD | Out-Null;
+        logger $FriendlyName "Checking for existing Factory VM";
 
-        logger $FriendlyName "Mount the differencing disk and copy in files";
-        MountVHDandRunBlock $sysprepVHD {
-            $sysprepScriptBlockString = $sysprepScriptBlock | Out-String;
+        # Check if there is already a factory VM - and kill it if there is
+		        if ((Get-VM | ? Name -eq $VirtualMachineName).Count -gt 0)
+        {
+			        Stop-VM $VirtualMachineName -TurnOff -Confirm:$false -Passthru | Remove-VM -Force;
+        }
 
-            if($GenericSysprep)
-            {
-                $sysprepScriptBlockString = $sysprepScriptBlockString.Replace(' `/unattend:"$unattendedXmlPath"', "");
+        # Check for a base VHD
+        if (-not (test-path $baseVHD))
+        {
+            # No base VHD - we need to create one
+            logger $FriendlyName "No base VHD!";
+
+            # Make unattend file
+            logger $FriendlyName "Creating unattend file for base VHD";
+
+            # Logon count is just "large number"
+		    makeUnattendFile -Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $AdminPassword -UserPassword $UserPassword `
+			    -key $ProductKey -logonCount "1000" -filePath "$($WorkingDirectory)\unattend.xml" -desktop $desktop -is32bit $is32bit;
+      
+            # Time to create the base VHD
+            logger $FriendlyName "Create base VHD using Convert-WindowsImage.ps1";
+
+		    ### Load Convert-WindowsImage
+		    . "$($ResourceDirectory)\Convert-WindowsImage.ps1";
+        
+            $ConvertCommand = "Convert-WindowsImage";
+            $ConvertCommand = $ConvertCommand + " -SourcePath `"$ISOFile`" -VHDPath `"$baseVHD`"";
+            $ConvertCommand = $ConvertCommand + " -SizeBytes 80GB -VHDFormat VHDX -UnattendPath `"$($WorkingDirectory)\unattend.xml`"";
+            $ConvertCommand = $ConvertCommand + " -Edition $SKUEdition -VHDPartitionStyle $VHDPartitionStyle";
+
+            Invoke-Expression "& $ConvertCommand";
+
+            # Clean up unattend file - we don't need it any more
+            logger $FriendlyName "Remove unattend file now that that is done";
+		    cleanupFile "$($WorkingDirectory)\unattend.xml";
+
+            logger $FriendlyName "Mount VHD and copy bits in, also set startup file";
+            MountVHDandRunBlock $baseVHD {
+                cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
+				
+                # Copy bits to VHD
+				Copy-Item "$($ResourceDirectory)\bits" -Destination ($driveLetter + ":\") -Recurse;
+				
+                # Create first logon script
+                $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
             }
-            else
-            {
-                # Make unattend file
-                makeUnattendFile -key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
+
+            logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
+		    createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $baseVHD -gen $Gen;
+
+            # Remove Page file
+            logger $FriendlyName "Removing the page file";
+            MountVHDandRunBlock $baseVHD {
+                attrib -s -h "$($driveLetter):\pagefile.sys";
+                cleanupFile "$($driveLetter):\pagefile.sys";
             }
+			
+            # Compact the base file
+            logger $FriendlyName "Compacting the base file";
+            Optimize-VHD -Path $baseVHD -Mode Full;
+        }
+        else
+        {
+            # The base VHD existed - time to check if it needs an update
+            logger $FriendlyName "Base VHD exists - need to check for updates";
+
+            # create new diff to check for updates
+            logger $FriendlyName "Create new differencing disk to check for updates";
+            cleanupFile $updateVHD;
+            New-VHD -Path $updateVHD -ParentPath $baseVHD | Out-Null;
+
+            logger $FriendlyName "Copy login file for update check, also make sure flag file is cleared"
+            MountVHDandRunBlock $updateVHD {
+                # Make the UpdateCheck script the logon script, make sure update flag file is deleted before we start
+                cleanupFile "$($driveLetter):\Bits\changesMade.txt";
+                cleanupFile "$($driveLetter):\Bits\Logon.ps1";
+                $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+            }
+
+            logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
+		    createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $updateVHD -gen $Gen;
+
+            # Mount the VHD
+            logger $FriendlyName "Mount the differencing disk";
+            $driveLetter = (Mount-VHD $updateVHD -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
+       
+            # Check to see if changes were made
+            logger $FriendlyName "Check to see if there were any updates";
+            if (Test-Path "$($driveLetter):\Bits\changesMade.txt") 
+            {
+                cleanupFile "$($driveLetter):\Bits\changesMade.txt";
+                logger $FriendlyName "Updates were found";
+            }
+            else 
+            {
+                logger $FriendlyName "No updates were found"; 
+                $sysprepNeeded = $false;
+            }
+
+            # Dismount
+            logger $FriendlyName "Dismount the differencing disk";
+            Dismount-VHD $updateVHD;
+
+            # Wait 2 seconds for activity to clean up
+            Start-Sleep -Seconds 2;
+
+            # If changes were made - merge them in.  If not, throw it away
+            if ($sysprepNeeded) 
+            {
+                logger $FriendlyName "Merge the differencing disk";
+                Merge-VHD -Path $updateVHD -DestinationPath $baseVHD;
+            }
+            else 
+            {
+                logger $FriendlyName "Delete the differencing disk"; 
+			    CSVLogger -CsvFile $CsvFilePath -VhdFile $finalVHD;
+                cleanupFile $updateVHD;
+            }
+        }
+
+        # Final Check - if the final VHD is missing - we need to sysprep and make it
+        if (-not (Test-Path $finalVHD)) 
+        {
+            $sysprepNeeded = $true;
+        }
+
+        if ($sysprepNeeded)
+        {
+            # create new diff to sysprep
+            logger $FriendlyName "Need to run Sysprep";
+            logger $FriendlyName "Creating differencing disk";
+            cleanupFile $sysprepVHD; new-vhd -Path $sysprepVHD -ParentPath $baseVHD | Out-Null;
+
+            logger $FriendlyName "Mount the differencing disk and copy in files";
+            MountVHDandRunBlock $sysprepVHD {
+                $sysprepScriptBlockString = $sysprepScriptBlock | Out-String;
+
+                if($GenericSysprep)
+                {
+                    $sysprepScriptBlockString = $sysprepScriptBlockString.Replace(' `/unattend:"$unattendedXmlPath"', "");
+                }
+                else
+                {
+                    # Make unattend file
+				    makeUnattendFile -Organization $Organization -Owner $Owner -Timezone $Timezone -AdminPassword $AdminPassword -UserPassword $UserPassword `
+					    -key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
+                }
             
-            # Make the logon script
-            cleanupFile "$($driveLetter):\Bits\Logon.ps1";
-            $sysprepScriptBlockString | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
-        }
-
-        logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
-        createRunAndWaitVM $sysprepVHD $Gen;
-
-        logger $FriendlyName "Mount the differencing disk and cleanup files";
-        MountVHDandRunBlock $sysprepVHD {
-            cleanupFile "$($driveLetter):\Bits\unattend.xml";
-            cleanupFile "$($driveLetter):\Bits\Logon.ps1";
-
-            if(-not $GenericSysprep)
-            {
                 # Make the logon script
-                $postSysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+                cleanupFile "$($driveLetter):\Bits\Logon.ps1";
+                $sysprepScriptBlockString | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
             }
-            else
-            {
-                # Cleanup \Bits as the postSysprepScriptBlock is not run anymore
-                cleanupFile "$($driveLetter):\Bits";
+
+            logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
+			        createRunAndWaitVM -VirtualMachineName $VirtualMachineName -VirtualSwitchName $VirtualSwitchName -vhd $sysprepVHD -gen $Gen;
+
+            logger $FriendlyName "Mount the differencing disk and cleanup files";
+            MountVHDandRunBlock $sysprepVHD {
+                cleanupFile "$($driveLetter):\Bits\unattend.xml";
+                cleanupFile "$($driveLetter):\Bits\Logon.ps1";
+
+                if(-not $GenericSysprep)
+                {
+                    # Make the logon script
+                    $postSysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+                }
+                else
+                {
+                    # Cleanup \Bits as the postSysprepScriptBlock is not run anymore
+                    cleanupFile "$($driveLetter):\Bits";
+                }
             }
-        }
 
-        # Remove Page file
-        logger $FriendlyName "Removing the page file";
-        MountVHDandRunBlock $sysprepVHD {
-            attrib -s -h "$($driveLetter):\pagefile.sys";
-            cleanupFile "$($driveLetter):\pagefile.sys";
-        }
+            # Remove Page file
+            logger $FriendlyName "Removing the page file";
+            MountVHDandRunBlock $sysprepVHD {
+                attrib -s -h "$($driveLetter):\pagefile.sys";
+                cleanupFile "$($driveLetter):\pagefile.sys";
+            }
 
-        # Produce the final disk
-        cleanupFile $finalVHD;
-        logger $FriendlyName "Convert differencing disk into pristine base image";
-        Convert-VHD -Path $sysprepVHD -DestinationPath $finalVHD -VHDType Dynamic;
-        logger $FriendlyName "Delete differencing disk";
-        CSVLogger $finalVHD -sysprepped;
-        cleanupFile $sysprepVHD;
+            # Produce the final disk
+            cleanupFile $finalVHD;
+            logger $FriendlyName "Convert differencing disk into pristine base image";
+            Convert-VHD -Path $sysprepVHD -DestinationPath $finalVHD -VHDType Dynamic;
+            logger $FriendlyName "Delete differencing disk";
+		    CSVLogger -CsvFile $CsvFilePath -VhdFile $finalVHD -Sysprepped;
+            cleanupFile $sysprepVHD;
+        }
     }
 }
 
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
-RunTheFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
-RunTheFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
-RunTheFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-RunTheFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
-RunTheFactory -FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-RunTheFactory -FriendlyName "Windows 10 Professional" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true;
-RunTheFactory -FriendlyName "Windows 10 Professional - Gen 2" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -Generation2 -desktop $true;
-RunTheFactory -FriendlyName "Windows 10 Professional - 32 bit" -ISOFile $10x86Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+try
+{
+	# Import configuration from dot-source ps1 or parsed xml
+	Import-Configuration;
+
+	# Main processing loop
+    if($Global:IF_Images -ne $null -and $Global:IF_Images.Count -gt 0)
+    {
+	    foreach($image in $Global:IF_Images)
+	    {
+		    $isDesktop = [bool]::Parse($image.IsDesktop);
+            if(-not [string]::IsNullOrEmpty($image.IsDesktop))
+            {
+		        $isDesktop = [bool]::Parse($image.IsDesktop);
+            }
+            
+            $is32Bit = $false;
+            if(-not [string]::IsNullOrEmpty($image.Is32Bit))
+            {
+		        $is32Bit = [bool]::Parse($image.Is32Bit);
+            }
+		    
+            $genericSysprep = $false;
+            if(-not [string]::IsNullOrEmpty($image.GenericSysprep))
+            {
+                $genericSysprep = [bool]::Parse($image.GenericSysprep);
+            }
+
+		    if($image.VmGeneration -eq 2)
+		    {
+			    RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				    -desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep -Generation2;
+		    }
+		    else
+		    {
+			    RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				    -desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep;
+		    }
+	    }
+    }
+}
+catch
+{
+	throw $_;
+}
