@@ -377,7 +377,7 @@ function Import-Configuration
 				{
 					if($section -eq "appSettings")
 					{
-						Set-Variable -Name "IF_$($node.Key)" -Value $node.Value -Force;
+						Set-Variable -Name "IF_$($node.Key)" -Scope "Global" -Value $node.Value -Force;
 					}
 					elseif($section -eq "ImageFactory.Images")
 					{
