@@ -365,7 +365,7 @@ function Import-Configuration
 		$psConfigPath = "$($path)\$($scriptName.Replace(".ps1", "config.ps1"))";
 		$xmlConfigPath = "$($path)\$($scriptName).config";
 
-		$Global:IF_Images = @{};
+		$Global:IF_Images = @();
 
 		if(Test-Path -Path $xmlConfigPath)
 		{
@@ -782,23 +782,40 @@ try
 	Import-Configuration;
 
 	# Main processing loop
-	foreach($image in $Global:IF_Images)
-	{
-		$isDesktop = [bool]::Parse($image.IsDesktop);
-		$is32Bit = [bool]::Parse($image.Is32Bit);
-		$genericSysprep = [bool]::Parse($image.GenericSysprep);
+    if($Global:IF_Images -ne $null -and $Global:IF_Images.Count -gt 0)
+    {
+	    foreach($image in $Global:IF_Images)
+	    {
+		    $isDesktop = [bool]::Parse($image.IsDesktop);
+            if(-not [string]::IsNullOrEmpty($image.IsDesktop))
+            {
+		        $isDesktop = [bool]::Parse($image.IsDesktop);
+            }
+            
+            $is32Bit = $false;
+            if(-not [string]::IsNullOrEmpty($image.Is32Bit))
+            {
+		        $is32Bit = [bool]::Parse($image.Is32Bit);
+            }
+		    
+            $genericSysprep = $false;
+            if(-not [string]::IsNullOrEmpty($image.GenericSysprep))
+            {
+                $genericSysprep = [bool]::Parse($image.GenericSysprep);
+            }
 
-		if($image.VmGeneration -eq 2)
-		{
-			RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
-				-desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep -Generation2;
-		}
-		else
-		{
-			RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
-				-desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep;
-		}
-	}
+		    if($image.VmGeneration -eq 2)
+		    {
+			    RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				    -desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep -Generation2;
+		    }
+		    else
+		    {
+			    RunTheFactory -FriendlyName $image.Name -ISOFile $image.Path -ProductKey $image.Key -SKUEdition $image.Edition `
+				    -desktop $isDesktop -is32bit $is32Bit -GenericSysprep $genericSysprep;
+		    }
+	    }
+    }
 }
 catch
 {
