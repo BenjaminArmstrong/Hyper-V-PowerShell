@@ -567,7 +567,6 @@ function RunTheFactory
 
 		checkPath "$($WorkingDirectory)";
 		checkPath "$($ResourceDirectory)";
-        checkPath "$($ResourceDirectory)\bits";
 
         # Setup a bunch of variables 
         $sysprepNeeded = $true;
