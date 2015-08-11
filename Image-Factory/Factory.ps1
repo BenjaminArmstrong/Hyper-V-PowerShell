@@ -567,6 +567,7 @@ function RunTheFactory
 
 		checkPath "$($WorkingDirectory)";
 		checkPath "$($ResourceDirectory)";
+        checkPath "$($ResourceDirectory)\bits";
 
         # Setup a bunch of variables 
         $sysprepNeeded = $true;
@@ -626,7 +627,7 @@ function RunTheFactory
                 cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
 
                 # Copy ResourceDirectory in
-                Copy-Item ($ResourceDirectory) -Destination ($driveLetter + ":\") -Recurse;
+                Copy-Item "$($ResourceDirectory)\Bits" -Destination ($driveLetter + ":\") -Recurse;
             
                 # Create first logon script
                 $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;

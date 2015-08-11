@@ -11,7 +11,7 @@
 #>
 
 $Global:IF_WorkingDirectory = "D:\ImageFactory";
-$Global:IF_ResourceDirectory = "$($Global:IF_WorkingDirectory)\resources\Bits";
+$Global:IF_ResourceDirectory = "$($Global:IF_WorkingDirectory)\resources";
 $Global:IF_CsvFilePath = "$($Global:IF_WorkingDirectory)\Share\Details.csv";
 $Global:IF_VirtualMachineName = "Factory VM";
 $Global:IF_VirtualSwitchName = "Virtual Switch";
