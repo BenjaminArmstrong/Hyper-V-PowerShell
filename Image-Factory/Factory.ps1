@@ -624,10 +624,10 @@ function RunTheFactory
             logger $FriendlyName "Mount VHD and copy bits in, also set startup file";
             MountVHDandRunBlock $baseVHD {
                 cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
-
-                # Copy ResourceDirectory in
-                Copy-Item "$($ResourceDirectory)\Bits" -Destination ($driveLetter + ":\") -Recurse;
-            
+				
+                # Copy PSWindowsUpdate to VHD
+				Copy-Item "$($ResourceDirectory)\PSWindowsUpdate" -Destination ($driveLetter + ":\") -Recurse;
+				
                 # Create first logon script
                 $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
             }
