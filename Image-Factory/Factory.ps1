@@ -625,8 +625,8 @@ function RunTheFactory
             MountVHDandRunBlock $baseVHD {
                 cleanupFile -file "$($driveLetter):\Convert-WindowsImageInfo.txt";
 				
-                # Copy PSWindowsUpdate to VHD
-				Copy-Item "$($ResourceDirectory)\PSWindowsUpdate" -Destination ($driveLetter + ":\") -Recurse;
+                # Copy bits to VHD
+				Copy-Item "$($ResourceDirectory)\bits" -Destination ($driveLetter + ":\") -Recurse;
 				
                 # Create first logon script
                 $updateCheckScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
@@ -641,7 +641,7 @@ function RunTheFactory
                 attrib -s -h "$($driveLetter):\pagefile.sys";
                 cleanupFile "$($driveLetter):\pagefile.sys";
             }
-
+			
             # Compact the base file
             logger $FriendlyName "Compacting the base file";
             Optimize-VHD -Path $baseVHD -Mode Full;
