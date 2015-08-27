@@ -454,7 +454,7 @@ $updateCheckScriptBlock = {
 };
 
 function Set-UpdateCheckPlaceHolders {
-    $block = $updateCheckScriptBlock | Out-String
+    $block = $updateCheckScriptBlock.ToString()
     
     if($UseStaticIP) {
         $block = $block.Replace('$UseStaticIP = STATICIPBOOLPLACEHOLDER', '$UseStaticIP = $true')
@@ -743,7 +743,7 @@ function Start-ImageFactory
 
         logger $FriendlyName "Mount the differencing disk and copy in files";
         MountVHDandRunBlock $sysprepVHD {
-            $sysprepScriptBlockString = $sysprepScriptBlock | Out-String;
+            $sysprepScriptBlockString = $sysprepScriptBlock.ToString();
 
             if($GenericSysprep)
             {
@@ -771,7 +771,7 @@ function Start-ImageFactory
             if(-not $GenericSysprep)
             {
                 # Make the logon script
-                $postSysprepScriptBlock | Out-String | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
+                $postSysprepScriptBlock.ToString() | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
             }
             else
             {

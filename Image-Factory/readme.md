@@ -9,6 +9,10 @@ For more information - read here: http://blogs.msdn.com/b/virtual_pc_guy/archive
 
 # Change Log #
 
+8/23715 -
+* Changes from Par Hultman
+  * Fixed problem with codeblocks that can result in un-wanted line breaks in script-files.
+
 8/21/15 -
 * Changes from Grant Emsley
   * Support configuration of static IP address on the factory VM
