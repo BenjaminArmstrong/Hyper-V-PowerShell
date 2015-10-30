@@ -1,7 +1,26 @@
-# Load variables from a seperate file - this when you pull down the latest factory file you can keep your paths / product keys etc...
+###############################################################
+## Factory.ps1
+## Windows Image Factory - Hyper-V
+## 
+###############################################################
+
+# Are we running as an Administrator? If not, prompt for elevation.
+#Requires -RunAsAdministrator
+
+# Load variables from a separate file - this when you pull down the latest factory file you can keep your paths / product keys etc...
 . .\FactoryVariables.ps1
+
 $startTime = get-date
 
+# Check to see if user has accepted the EULAs governing third-party components as script 
+# will automatically download PS-WindowsUpdate and Convert-WindowsImage.ps1
+if ($acceptEULAs -eq $false)
+{
+    Write-Host -BackgroundColor DarkRed "Please review Readme.md for important EULA details."
+    Write-Host -BackgroundColor DarkRed "If you accept the EULAs associated with the Windows Image Factory"
+    Write-Host -BackgroundColor DarkRed "edit FactoryVariables.ps1 and set the AcceptEULAs variable to True."
+    exit
+}
 
 # Helper function to make sure that needed folders are present
 function checkPath
@@ -15,6 +34,17 @@ function checkPath
         $null = md $path;
     }
 }
+
+# Helper function for extracting ZIP files
+function Expand-ZIPFile($file, $destination)
+ {
+ $shell = new-object -com shell.application
+ $zip = $shell.NameSpace($file)
+ foreach($item in $zip.items())
+ {
+ $shell.Namespace($destination).copyhere($item)
+ }
+ }
 
 # Test that necessary paths and files exist
 # Don't create the workingDir automatically - if it doesn't exist, the variables probably need the be configured first.
@@ -37,18 +67,18 @@ if(Test-Path -Path "$($workingDir)\resources\Convert-WindowsImage.ps1") {
         Throw 'Convert-WindowsImage was not loaded'
     }
 } else {
-    Write-Host -ForegroundColor Green "Please download Convert-WindowsImage.ps1 and place in $($workingDir)\Resources\"
-    Write-Host -ForegroundColor Green "`nhttps://gallery.technet.microsoft.com/scriptcenter/Convert-WindowsImageps1-0fe23a8f`n"
-    Throw 'Missing Convert-WindowsImage.ps1 script'
+    Write-Host "Downloading Convert-WindowsImage Script"
+    Invoke-WebRequest -Uri https://gallery.technet.microsoft.com/scriptcenter/Convert-WindowsImageps1-0fe23a8f/file/59237/7/Convert-WindowsImage.ps1 -OutFile "$($workingDir)\resources\Convert-WindowsImage.ps1"
 }
 
 # Check that PSWindowsUpdate module exists
 if(!(Test-Path -Path "$($workingDir)\Resources\bits\PSWindowsUpdate\PSWindowsUpdate.psm1")) {
-    Write-Host -ForegroundColor Green "Please download PSWindowsUpdate and extract to $($workingDir)\Resources\bits"
-    Write-Host -ForegroundColor Green "`nhttps://gallery.technet.microsoft.com/scriptcenter/2d191bcd-3308-4edd-9de2-88dff796b0bc`n"
-    Throw 'Missing PSWindowsUpdate module'
+    Write-Host "Downloading PSWindowsUpdate Module"
+    Invoke-WebRequest -Uri https://gallery.technet.microsoft.com/scriptcenter/2d191bcd-3308-4edd-9de2-88dff796b0bc/file/41459/43/PSWindowsUpdate.zip -OutFile "$($workingDir)\resources\PSWindowsUpdate.zip"
+    Write-Host "Expanding PSWindowsUpdate.zip to $($workingDir)\resources\bits"
+    Expand-ZIPFile -File "$($workingDir)\resources\PSWindowsUpdate.zip" -destination "$($workingDir)\resources\bits"
+    Remove-Item -Path "$($workingDir)\resources\PSWindowsUpdate.zip"
 }
-
 
 ### Sysprep unattend XML
 $unattendSource = [xml]@"
@@ -214,7 +244,7 @@ function Logger {
     );
 
     # Function for displaying formatted log messages.  Also displays time in minutes since the script was started
-    write-host (Get-Date).ToShortTimeString() -ForegroundColor Cyan -NoNewline;
+    write-host (Get-Date) -ForegroundColor Cyan -NoNewline;
     write-host " - [" -ForegroundColor White -NoNewline;
     write-host $systemName -ForegroundColor Yellow -NoNewline;
     write-Host "]::$($message)" -ForegroundColor White;
@@ -233,8 +263,6 @@ function cleanupFile
         Remove-Item $file -Recurse;
     }
 }
-
-
 
 function GetUnattendChunk 
 {
@@ -259,7 +287,8 @@ function makeUnattendFile
         [string] $logonCount, 
         [string] $filePath, 
         [bool] $desktop = $false, 
-        [bool] $is32bit = $false
+        [bool] $is32bit = $false,
+        [bool] $win7 = $false
     ); 
 
     # Composes unattend file and writes it to the specified filepath
@@ -289,6 +318,16 @@ function makeUnattendFile
         $node = $unattend.SelectSingleNode("//ns:LocalAccounts", $ns);
         $node.ParentNode.RemoveChild($node) | Out-Null;
     }
+
+    if ($win7)
+    {
+        # Removes the HideLocalAccountScreen Node, as this isn't available in Windows 7 and 2008 R2
+        $ns = New-Object System.Xml.XmlNamespaceManager($unattend.NameTable)
+        $ns.AddNamespace("ns", $unattend.DocumentElement.NamespaceURI)
+        $node = $unattend.SelectSingleNode("//ns:HideLocalAccountScreen", $ns) 
+        $node.ParentNode.RemoveChild($node) | Out-Null
+    }
+
      
     if ($is32bit) 
     {
@@ -367,18 +406,10 @@ $updateCheckScriptBlock = {
         Remove-Item -Force "$ENV:SystemDrive\Unattend.xml"
     }
 
-    # Check to see if files need to be unblocked - if they do, do it and reboot
-    if ((Get-ChildItem $env:SystemDrive\Bits | `
-        Get-Item -Stream "Zone.Identifier" -ErrorAction SilentlyContinue).Count -gt 0)
-    {
-        Get-ChildItem $env:SystemDrive\Bits | Unblock-File;
-        Invoke-Expression 'shutdown -r -t 0'
-    }
-
     # To get here - the files are unblocked
     Import-Module $env:SystemDrive\Bits\PSWindowsUpdate\PSWindowsUpdate;
 
-    # Set static IP address - do not change values here, change them in FactoryVariables.ps1
+    # Set static IP address - do not change values here
     $UseStaticIP = STATICIPBOOLPLACEHOLDER
     if($UseStaticIP) {
         $IP = 'IPADDRESSPLACEHOLDER'
@@ -404,8 +435,6 @@ $updateCheckScriptBlock = {
         $adapter | Set-DnsClientServerAddress -ServerAddresses $DNS  
     }
 
-
-
     # Run pre-update script if it exists
     if (Test-Path "$env:SystemDrive\Bits\PreUpdateScript.ps1") {
         & "$env:SystemDrive\Bits\PreUpdateScript.ps1"
@@ -421,7 +450,7 @@ $updateCheckScriptBlock = {
     }
  
     # Apply all the updates
-    Get-WUInstall -AcceptAll -IgnoreReboot -IgnoreUserInput -NotCategory "Language packs";
+    Get-WUInstall -AcceptAll -IgnoreReboot -IgnoreUserInput -NotCategory "Language packs"
 
     # Run post-update script if it exists
     if (Test-Path "$env:SystemDrive\Bits\PostUpdateScript.ps1") {
@@ -543,6 +572,9 @@ function Start-ImageFactory
             .PARAMETER Is32Bit
             Set to $true for 32 bit images to create the unattend file correctly.
 
+            .PARAMETER Win7
+            Set to $true for Windows 7 and Windows Server 2008 R2 to create the unattend file correctly.
+
             .PARAMETER Generation2
             Create a generation 2 virtual machine.  Default is generation 1
 
@@ -579,9 +611,9 @@ function Start-ImageFactory
         [bool]$desktop = $false,
         [bool]$is32bit = $false,
         [switch]$Generation2,
-        [bool] $GenericSysprep = $false
+        [bool] $GenericSysprep = $false,
+        [bool] $Win7 = $false
     );
-
     logger $FriendlyName "Starting a new cycle!"
 
     # Setup a bunch of variables 
@@ -599,7 +631,7 @@ function Start-ImageFactory
         $Gen = 2;
     }
 
-    # Verify product key
+    # Verify product key syntax to ensure 25-character alphanumeric string was entered
     if(-not ($ProductKey -imatch '^[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}$')) {
         logger $FriendlyName 'Invalid product key, skipping this product'
         return
@@ -628,7 +660,7 @@ function Start-ImageFactory
         logger $FriendlyName "Creating unattend file for base VHD";
 
         # Logon count is just "large number"
-        makeUnattendFile -key $ProductKey -logonCount "1000" -filePath "$($workingDir)\unattend.xml" -desktop $desktop -is32bit $is32bit;
+        makeUnattendFile -key $ProductKey -logonCount "1000" -filePath "$($workingDir)\unattend.xml" -desktop $desktop -is32bit $is32bit -win7 $Win7;
       
         # Time to create the base VHD
         logger $FriendlyName "Create base VHD using Convert-WindowsImage.ps1";
@@ -810,6 +842,8 @@ function Start-ImageFactory
         logger $FriendlyName "Delete differencing disk";
         CSVLogger $finalVHD -sysprepped;
         cleanupFile $sysprepVHD;
+        logger $FriendlyName "Generating MD5 hash";
+        Get-FileHash -Path $finalVHD -Algorithm MD5 | foreach {$_.Hash} | Out-File -FilePath "$finalvhd.md5"
     }
 }
 
@@ -823,7 +857,11 @@ if($startfactory) {
     Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
     Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
     Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
+    Start-ImageFactory -FriendlyName "Windows Server 2008 R2 Datacenter" -ISOFile $2008R2Image -ProductKey $windows2008R2key -SKUEdition "ServerDatacenter" -Win7 $true;
+    Start-ImageFactory -FriendlyName "Windows Server 2008 R2 Datacenter Core" -ISOFile $2008R2Image -ProductKey $windows2008R2key -SKUEdition "ServerDatacenterCore" -Win7 $true;
+    Start-ImageFactory -FriendlyName "Windows 7 Professional" -ISOFile $7x64Image -ProductKey $windows7key -SKUEdition "Professional" -desktop $true -Win7 $true;
+    Start-ImageFactory -FriendlyName "Windows 7 Professional - 32 bit" -ISOFile $7x86Image -ProductKey $windows7key -SKUEdition "Professional" -desktop $true -Win7 $true;
+	Start-ImageFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
     Start-ImageFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
     Start-ImageFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
     Start-ImageFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
