@@ -501,7 +501,7 @@ $updateCheckScriptBlock = {
     {
         Start-Sleep -Seconds 5;
 		logger "Checking for Internet connection"
-    } until (Test-Connection -computername www.microsoft.com)
+    } until ((Invoke-WebRequest http://www.microsoft.com).StatusCode -eq 200)
 	
     # Run pre-update script if it exists
     if (Test-Path "$env:SystemDrive\Bits\PreUpdateScript.ps1") {
