@@ -329,6 +329,12 @@ function createRunAndWaitVM
     If($UseVLAN) {
         Get-VMNetworkAdapter -VMName $factoryVMName | Set-VMNetworkAdapterVlan -Access -VlanId $VlanId
     }
+    
+    # check if the generation is 2, and set secure boot to off: fixing #36
+    if($Gen = 2)
+    {
+        Set-VMFirmware $factoryvmname -EnableSecureBoot Off
+    }
 
     set-vm -Name $factoryVMName -ProcessorCount 2;
     Start-VM $factoryVMName;
