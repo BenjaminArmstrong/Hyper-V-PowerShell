@@ -798,7 +798,12 @@ function Start-ImageFactory
             
             # Create first logon script
             Set-UpdateCheckPlaceHolders | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
-        }
+			
+			# Disable Windows 10 (todo: check if Windows 10 - but wont break stuff on non-Win 10 right?)
+			& reg load HKLM\NewOS "$($driveLetter):\windows\system32\config\SOFTWARE"
+			& reg add HKLM\NewOS\Policies\Microsoft\WindowsStore /v AutoDownload /t REG_DWORD /d 2 /f
+			& reg unload HKLM\NewOS
+		}
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
         createRunAndWaitVM $baseVHD $Gen;
