@@ -363,9 +363,9 @@ function MountVHDandRunBlock
     # This function mounts a VHD, runs a script block and unmounts the VHD.
     # Drive letter of the mounted VHD is stored in $driveLetter - can be used by script blocks
     if($ReadOnly) {
-        $driveLetter = (Mount-VHD $vhd -ReadOnly -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
+        $driveLetter = (Mount-VHD $vhd -ReadOnly -Passthru | Get-Disk | Get-Partition | Get-Volume | Where { $_.DriveLetter }).DriveLetter;
     } else {
-        $driveLetter = (Mount-VHD $vhd -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
+        $driveLetter = (Mount-VHD $vhd -Passthru | Get-Disk | Get-Partition | Get-Volume | Where { $_.DriveLetter } ).DriveLetter;
     }
     & $block;
 
