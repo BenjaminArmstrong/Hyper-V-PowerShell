@@ -2,10 +2,10 @@ $tempPath = [System.IO.Path]::GetTempPath() + [System.Guid]::NewGuid().ToString(
 
 # ADK Download - https://docs.microsoft.com/en-us/windows-hardware/get-started/adk-install
 # You only need to install the deployment tools
-$oscdimgPath = "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
+$oscdimgPath = "${Env:ProgramFiles(x86)}\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
 
 # Download qemu-img from here: http://www.cloudbase.it/qemu-img-windows/
-$qemuImgPath = "C:\Working Space\qemu-img\qemu-img.exe"
+$qemuImgPath = "${Env:UserProfile}\Downloads\qemu-img.exe"
 
 # Update this to the release of Ubuntu that you want
 $ubuntuPath = "http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64"
@@ -17,8 +17,8 @@ $GuestAdminPassword = "P@ssw0rd"
 $VMName = "Ubuntu Test"
 $virtualSwitchName = "Virtual Switch"
 
-$vmPath = "C:\Working Space\VM"
-$imageCachePath = "C:\Working Space"
+$vmPath = "${Env:Public}\Documents\Hyper-V\$VMName"
+$imageCachePath = $tempPath
 $vhdx = "$($vmPath)\test.vhdx"
 $metaDataIso = "$($vmPath)\metadata.iso"
 
