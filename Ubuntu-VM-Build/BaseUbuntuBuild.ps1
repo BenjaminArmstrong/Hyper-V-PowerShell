@@ -2,7 +2,7 @@ $tempPath = [System.IO.Path]::GetTempPath() + [System.Guid]::NewGuid().ToString(
 
 # ADK Download - https://docs.microsoft.com/en-us/windows-hardware/get-started/adk-install
 # You only need to install the deployment tools
-$oscdimgPath = "C:\Program Files (x86)\Windows Kits\\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
+$oscdimgPath = "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
 
 # Download qemu-img from here: http://www.cloudbase.it/qemu-img-windows/
 $qemuImgPath = "C:\Working Space\qemu-img\qemu-img.exe"
