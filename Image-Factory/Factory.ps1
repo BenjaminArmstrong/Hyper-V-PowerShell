@@ -8,6 +8,10 @@ param
 . $variables
 $startTime = get-date
 
+
+[string] $driveLetter = ""
+
+
 # Helper function to make sure that needed folders are present
 function checkPath
 {
@@ -368,9 +372,9 @@ function MountVHDandRunBlock
     # This function mounts a VHD, runs a script block and unmounts the VHD.
     # Drive letter of the mounted VHD is stored in $driveLetter - can be used by script blocks
     if($ReadOnly) {
-        $driveLetter = (Mount-VHD $vhd -ReadOnly -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
+        $driveLetter = (Mount-VHD $vhd -ReadOnly -Passthru | Get-Disk | Get-Partition | Where { -not $_.IsHidden } | Get-Volume | Where { $_.DriveLetter }).DriveLetter;
     } else {
-        $driveLetter = (Mount-VHD $vhd -Passthru | Get-Disk | Get-Partition | Get-Volume).DriveLetter;
+        $driveLetter = (Mount-VHD $vhd -Passthru | Get-Disk | Get-Partition | Where { -not $_.IsHidden } | Get-Volume | Where { $_.DriveLetter } ).DriveLetter;
     }
     & $block;
 
@@ -903,6 +907,10 @@ function Start-ImageFactory
             else
             {
                 # Make unattend file
+                if (-not (Test-Path "$($driveLetter):\Bits")) {
+                    New-Item "$($driveLetter):\Bits" -ItemType Directory | Out-Null
+                }
+
                 makeUnattendFile -key $ProductKey -logonCount "1" -filePath "$($driveLetter):\Bits\unattend.xml" -desktop $desktop -is32bit $is32bit;
             }
             
