@@ -8,6 +8,10 @@ For more information - read here: http://blogs.msdn.com/b/virtual_pc_guy/archive
 
 
 # Change Log #
+9/3/16 -
+* Changes from Phil Bolduc
+  * optionally load target images from a CSV file using a command line argument (-images)
+  * optionally load variables from different files using a command line argument (-variables)
 
 10/30/15 -
 * Changes from Garry Martin

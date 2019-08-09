@@ -1,8 +1,16 @@
+param
+(
+    [string]$variables=".\FactoryVariables.ps1",
+    [string]$images
+)
+
 # Load variables from a seperate file - this when you pull down the latest factory file you can keep your paths / product keys etc...
-. .\FactoryVariables.ps1
+. $variables
 $startTime = get-date
 
+
 [string] $driveLetter = ""
+
 
 # Helper function to make sure that needed folders are present
 function checkPath
@@ -286,7 +294,7 @@ function makeUnattendFile
         $ns.AddNamespace("ns", $unattend.DocumentElement.NamespaceURI);
         $node = $unattend.SelectSingleNode("//ns:HideLocalAccountScreen", $ns);
         $node.ParentNode.RemoveChild($node) | Out-Null;
-	}
+    }
     else
     {
         # Desktop needs a user other than "Administrator" to be present
@@ -304,7 +312,7 @@ function makeUnattendFile
             $ns.AddNamespace("ns", $unattend.DocumentElement.NamespaceURI);
             $node = $unattend.SelectSingleNode("//ns:HideLocalAccountScreen", $ns);
             $node.ParentNode.RemoveChild($node) | Out-Null;
-    	}
+        }
     }
      
     if ($is32bit) 
@@ -431,9 +439,9 @@ $updateCheckScriptBlock = {
                 logger "Installing .NET 4.5.2"
                 $InstallDotNet = Start-Process $file -ArgumentList "/q /norestart" -Wait -PassThru 
                 logger ".NET 4.5.2 installation complete"
-            }	
-        }    		
-		
+            }   
+        }           
+        
         logger "Downloading Windows Management Framework 4.0"
         if (!(test-path -Path "C:\Temp"))
         { 
@@ -456,7 +464,7 @@ $updateCheckScriptBlock = {
         }
         Invoke-Expression 'shutdown -r -t 0'
     }
-	
+    
     # Check to see if files need to be unblocked - if they do, do it and reboot
     if ((Get-ChildItem $env:SystemDrive\Bits | `
         Get-Item -Stream "Zone.Identifier" -ErrorAction SilentlyContinue).Count -gt 0)
@@ -497,20 +505,20 @@ $updateCheckScriptBlock = {
 
 
     # Need to add check for Internet connectivity due to Windows 7 driver load timing fail
-	logger "Checking for Internet connection" 
+    logger "Checking for Internet connection" 
     do
     {
         Start-Sleep -Seconds 5;
-		logger "Checking for Internet connection"
+        logger "Checking for Internet connection"
     } until (Test-Connection -computername www.microsoft.com)
-	
+    
     # Run pre-update script if it exists
     if (Test-Path "$env:SystemDrive\Bits\PreUpdateScript.ps1") {
         & "$env:SystemDrive\Bits\PreUpdateScript.ps1"
     }
 
     # Check if any updates are needed - leave a marker if there are
-	logger "Checking for updates" 
+    logger "Checking for updates" 
     if ((Get-WUList).Count -gt 0)
     {
         if (-not (Test-Path $env:SystemDrive\Bits\changesMade.txt))
@@ -578,16 +586,16 @@ $sysprepScriptBlock = {
 
     # Remove Unattend entries from the autorun key if they exist
     foreach ($regvalue in (Get-Item -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run).Property)
-	{
-		if ($regvalue -like "Unattend*")
-		{
-		    # could be multiple unattend* entries
-		    foreach ($unattendvalue in $regvalue)
-		    {
-			    Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -name $unattendvalue
-		    }
+    {
+        if ($regvalue -like "Unattend*")
+        {
+            # could be multiple unattend* entries
+            foreach ($unattendvalue in $regvalue)
+            {
+                Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -name $unattendvalue
+            }
         }
-	}
+    }
              
     $unattendedXmlPath = "$ENV:SystemDrive\Bits\Unattend.xml";
     & "$ENV:SystemRoot\System32\Sysprep\Sysprep.exe" `/generalize `/oobe `/shutdown `/unattend:"$unattendedXmlPath";
@@ -597,16 +605,16 @@ $sysprepScriptBlock = {
 $postSysprepScriptBlock = {
     # Remove Unattend entries from the autorun key if they exist
     foreach ($regvalue in (Get-Item -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run).Property)
-	{
-		if ($regvalue -like "Unattend*")
-		{
-		    # could be multiple unattend* entries
-		    foreach ($unattendvalue in $regvalue)
-		    {
-			    Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -name $unattendvalue
-		    }
+    {
+        if ($regvalue -like "Unattend*")
+        {
+            # could be multiple unattend* entries
+            foreach ($unattendvalue in $regvalue)
+            {
+                Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -name $unattendvalue
+            }
         }
-	}
+    }
 
     # Run post-sysprep script if it exists
     if (Test-Path "$env:SystemDrive\Bits\PostSysprepScript.ps1") {
@@ -632,14 +640,14 @@ $postSysprepScriptBlock = {
     } 
 
     # Remove Demo user
-	$computer = $env:computername
-	$user = "Demo"
-	if ([ADSI]::Exists("WinNT://$computer/$user"))
-	{
-	    [ADSI]$server = "WinNT://$computer"
-	    $server.delete("user",$user)
-	}
-	
+    $computer = $env:computername
+    $user = "Demo"
+    if ([ADSI]::Exists("WinNT://$computer/$user"))
+    {
+        [ADSI]$server = "WinNT://$computer"
+        $server.delete("user",$user)
+    }
+    
     # Put any code you want to run Post sysprep here
     Invoke-Expression 'shutdown -r -t 0';
 };
@@ -647,9 +655,9 @@ $postSysprepScriptBlock = {
 # This is the main function of this script
 function Start-ImageFactory
 {
-	<#
-			.SYNOPSIS
-			Creates or updates a windows image with the latest windows updates.
+    <#
+            .SYNOPSIS
+            Creates or updates a windows image with the latest windows updates.
 
             .DESCRIPTION
             This function creates fully updated VHD images for deployment as virtual machines.
@@ -659,8 +667,8 @@ function Start-ImageFactory
 
             Much of the configuration is done in FactoryVariables.ps1, which must be edited to suit your environment.
 
-			.PARAMETER FriendlyName
-			Used as the file name for the image.
+            .PARAMETER FriendlyName
+            Used as the file name for the image.
 
             .PARAMETER ISOFile
             The ISO or WIM file to use as the base of the windows image.
@@ -690,7 +698,7 @@ function Start-ImageFactory
 
             Convert-WindowsImage.ps1 from https://gallery.technet.microsoft.com/scriptcenter/Convert-WindowsImageps1-0fe23a8f
 
-			.LINK
+            .LINK
             https://github.com/BenjaminArmstrong/Hyper-V-PowerShell
 
             .EXAMPLE
@@ -702,7 +710,7 @@ function Start-ImageFactory
             .EXAMPLE
             Start-ImageFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile c:\path\to\isos\windows81.iso -ProductKey "GCRJD-8NW9H-F2CDX-CCM8D-9D6T9" -SKUEdition "Professional" -desktop $true -is32bit $true
 
-	#>
+    #>
 
 
     param
@@ -794,7 +802,12 @@ function Start-ImageFactory
             
             # Create first logon script
             Set-UpdateCheckPlaceHolders | Out-File -FilePath "$($driveLetter):\Bits\Logon.ps1" -Width 4096;
-        }
+			
+			# Disable Windows 10 (todo: check if Windows 10 - but wont break stuff on non-Win 10 right?)
+			& reg load HKLM\NewOS "$($driveLetter):\windows\system32\config\SOFTWARE"
+			& reg add HKLM\NewOS\Policies\Microsoft\WindowsStore /v AutoDownload /t REG_DWORD /d 2 /f
+			& reg unload HKLM\NewOS
+		}
 
         logger $FriendlyName "Create virtual machine, start it and wait for it to stop...";
         createRunAndWaitVM $baseVHD $Gen;
@@ -959,32 +972,282 @@ function Start-ImageFactory
     }
 }
 
+function Process-ImagesFile {
+    if (-not (Test-Path -Path $images -PathType Leaf)) {
+        Write-Host -ForegroundColor Green "CSV Image file not found: $images"
+        Throw 'Missing images csv file'
+    }
+    
+    <#
+            .SYNOPSIS
+            Creates a friendly name for the target VM.
+
+            .DESCRIPTION
+            This function returns a string friendly name for the VM based on the target parameters.
+            If the target specified a name explicitly, that name is returned. Otherwise, the name will be generated
+			using this pattern:
+            
+                <product> <edition> [Core | with GUI] [- Gen 2]
+                <product> <edition> <servicing branch> [- 32 bit] [- Gen 2]
+                <product> <edition> <servicing branch> [- Gen 2]            
+
+            .PARAMETER target
+            Specifies the target configuration.
+            
+            .PARAMETER gui
+            Specifies if the VM OS will be GUI OS. If not GUI, it will be a Core OS.
+            
+            .PARAMETER generation
+            Specifies the Hyper-V VM generation. 1 or 2.
+    #>
+    function Create-FriendlyName ($target, [bool]$gui, [int]$generation) {
+        if ($target.Name -ne "") {
+            # use the user supplied friendly name
+            return $target.Name
+        } else {
+            # Build FriendlyName compatible with existing system
+            #
+            # <product> <edition> [Core | with GUI] [- Gen 2]
+            # <product> <edition> <servicing branch> [- 32 bit] [- Gen 2]
+            # <product> <edition> <servicing branch> [- Gen 2]
+            $friendlyName = $target.Product + " " + $target.Edition
+            
+            switch ($target.Edition)
+            {
+                "DataCenter" {
+                    if ($gui) {
+                        $friendlyName += " with GUI";
+                    } else {
+                        $friendlyName += " Core";
+                    }
+                }
+                
+                "Standard" {
+                    if ($gui) {
+                        $friendlyName += " with GUI";
+                    } else {
+                        $friendlyName += " Core";
+                    }
+                }
+                
+                "Ultimate" {
+                }
+                
+                "Enterprise" {
+                    # only Enterprise has servicing branches
+                    if ($target.SB -ne "") {
+                        $friendlyName += " " + $target.SB
+                    }
+                }
+                
+                "Professional" {
+                }
+            }
+
+            if ($target.Arch -eq "x86") {
+                $friendlyName += " - 32 bit";
+            }
+            
+            if ($generation -eq 2) {
+                $friendlyName += " - Gen 2"
+            }
+            
+            return $friendlyName
+        }
+    }
+    
+    function Create-Arguments ($target, [bool]$gui, [int]$generation) {
+        $arguments = @{}
+        
+        $arguments.Add("ISOFile", $target.Image)
+        $arguments.Add("ProductKey", $target.ProductKey)
+ 
+        #
+        $friendlyName = Create-FriendlyName -target $target -gui $gui -generation $generation
+        $arguments.Add("FriendlyName", $friendlyName)
+                    
+        switch ($target.Edition)
+        {
+            "DataCenter" {
+                if ($gui) {
+                    $arguments.Add("SKUEdition", "Server" + $target.Edition)
+                } else {
+                    $arguments.Add("SKUEdition", "Server"+ $target.Edition+"Core")
+                }
+            }
+            
+            "Standard" {
+                if ($gui) {
+                    $arguments.Add("SKUEdition", "Server" + $target.Edition)
+                } else {
+                    $arguments.Add("SKUEdition", "Server"+ $target.Edition+"Core")
+                }
+            }
+            
+            "Ultimate" {
+                $arguments.Add("SKUEdition", $target.Edition)
+                $arguments.Add("desktop", $true)
+            }
+            
+            "Enterprise" {
+                $arguments.Add("SKUEdition", $target.Edition)
+                $arguments.Add("desktop", $true)
+            }
+            
+            "Professional" {
+                $arguments.Add("SKUEdition", $target.Edition)
+                $arguments.Add("desktop", $true)
+            }
+        }
+
+        if ($target.Arch -eq "x86") {
+        }
+        
+        if ($generation -eq 2) {
+            $arguments.Add("Generation2", $true)
+        }
+        
+
+        if ($target.Arch -eq "x86") {
+            $arguments.Add("Is32Bit", $true)
+        }
+
+        return $arguments;
+    }
+        
+    <#
+            .SYNOPSIS
+            Creates zero or more arguments to be passed to Start-ImageFactory
+
+            .DESCRIPTION
+            This function returns an array of arguments that can be passed to Start-ImageFactory. 
+            The number of return values depends if the configuration specified a GUI, Core, Generation 1 or Generation 2 VM.
+
+            .PARAMETER target
+            Specifies the target configuration.
+    #>
+    function Create-StartImageFactoryArguments ($target) {
+        $arguments = @()
+        
+        if ($target.GUI -eq "TRUE") {
+        
+            if ($target.Gen1 -eq "TRUE") {
+                $arguments += Create-Arguments -target $target -gui $true -generation 1
+            }
+            
+            if ($target.Gen2 -eq "TRUE") {
+                $arguments += Create-Arguments -target $target -gui $true -generation 2
+            }
+        }
+        
+        if ($target.Core -eq "TRUE") {
+        
+            if ($target.Gen1 -eq "TRUE") {
+                $arguments += Create-Arguments -target $target -gui $false -generation 1
+            }
+            
+            if ($target.Gen2 -eq "TRUE") {
+                $arguments += Create-Arguments -target $target -gui $false -generation 2
+            }
+        }
+        
+        return $arguments;
+    }
+
+    <#
+            .SYNOPSIS
+            Gets the full path to image in the specified path.
+
+            .DESCRIPTION
+            This function returns the full path or $null if the specified file was not found.
+
+            .PARAMETER image
+            Specifies the image file name to find.
+
+            .PARAMETER path
+            Specifies a path to search.
+    #>
+    function Get-Image($image, $path) {
+        if (Test-Path $path -PathType Container) {
+            $item = Get-ChildItem -Path $path -Filter $image -Recurse
+            if ($item -ne $null) {
+                return $item.FullName
+            }
+        }
+        
+        return $null
+    }
+    
+    $targets = Import-Csv -Path $images
+    ForEach ($target In $targets) {
+    
+        if ($target.Skip -eq "TRUE" -or $target.Image -eq "") {
+            #Write-Host -ForegroundColor Green "Skipping $($target)"
+            continue;
+        }
+        
+        # search in the working ISOs directory if exists
+        if (-not (Test-Path -Path $target.Image -PathType Leaf)) {
+            $workingIsoDir = [io.path]::Combine($workingDir,"ISOs")
+            $image = Get-Image -image $target.Image -path $workingIsoDir
+            if ($image -ne $null) {
+                $target.Image = $image
+            }
+        }
+        
+        # search in the iso search directory if specified
+        if (-not (Test-Path -Path $target.Image -PathType Leaf)) {
+            $image = Get-Image -image $target.Image -path $isoSearchDir
+            if ($image -ne $null) {
+                $target.Image = $image
+            }
+        }
+   
+        if (-not (Test-Path -Path $target.Image -PathType Leaf)) {
+            $iso = $target.Image
+            $gui = $target.Core -ne "TRUE"
+            $friendlyName = Create-FriendlyName -target $target -gui $gui -generation $generation
+            Write-Host -ForegroundColor Green "ISO/WIM not found [$friendlyName]: $iso"
+            continue;
+        }
+        
+        # one target could create Gen 1/Gen 2/Core/Gui variations
+        $arguments = Create-StartImageFactoryArguments -target $target
+        ForEach ($arg In $arguments) {
+            Start-ImageFactory @arg
+        }
+    }
+}
+
 if($startfactory) {
-
-    Start-ImageFactory -FriendlyName "Windows Server 2016 DataCenter Core - Gen 2" -ISOFile $2016Image -ProductKey $Windows2016Key -SKUEdition "ServerDataCenterCore" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2016 DataCenter with GUI - Gen 2" -ISOFile $2016Image -ProductKey $Windows2016Key -SKUEdition "ServerDataCenter" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
-    Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
-    Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
-    Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
-    Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
-    Start-ImageFactory -FriendlyName "Windows Server 2008 R2 DataCenter with GUI" -ISOFile $2008R2Image -ProductKey $Windows2008R2Key -SKUEdition "ServerDataCenter";
-    Start-ImageFactory -FriendlyName "Windows Server 2008 R2 DataCenter Core" -ISOFile $2008R2Image -ProductKey $Windows2008R2Key -SKUEdition "ServerDataCenterCore";
-    Start-ImageFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-    Start-ImageFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-    Start-ImageFactory -FriendlyName "Windows 7 Enterprise" -ISOFile $7x64Image -ProductKey $Windows7Key -SKUEdition "Enterprise" -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 7 Enterprise - 32 bit" -ISOFile $7x86Image -ProductKey $Windows7Key -SKUEdition "Enterprise" -desktop $true -is32bit $true;
-    Start-ImageFactory -FriendlyName "Windows 10 Professional" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 10 Professional - Gen 2" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -Generation2 -desktop $true;
-    Start-ImageFactory -FriendlyName "Windows 10 Professional - 32 bit" -ISOFile $10x86Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true -is32bit $true;
-
+    if ($images -ne $null) {
+        Process-ImagesFile
+    } else {
+        # process original way
+        Start-ImageFactory -FriendlyName "Windows Server 2016 DataCenter Core - Gen 2" -ISOFile $2016Image -ProductKey $Windows2016Key -SKUEdition "ServerDataCenterCore" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2016 DataCenter with GUI - Gen 2" -ISOFile $2016Image -ProductKey $Windows2016Key -SKUEdition "ServerDataCenter" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter";
+        Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore";
+        Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter with GUI - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenter" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2012 R2 DataCenter Core - Gen 2" -ISOFile $2012R2Image -ProductKey $Windows2012R2Key -SKUEdition "ServerDataCenterCore" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter with GUI" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter";
+        Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore";
+        Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter with GUI - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenter" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2012 DataCenter Core - Gen 2" -ISOFile $2012Image -ProductKey $Windows2012Key -SKUEdition "ServerDataCenterCore" -Generation2;
+        Start-ImageFactory -FriendlyName "Windows Server 2008 R2 DataCenter with GUI" -ISOFile $2008R2Image -ProductKey $Windows2008R2Key -SKUEdition "ServerDataCenter";
+        Start-ImageFactory -FriendlyName "Windows Server 2008 R2 DataCenter Core" -ISOFile $2008R2Image -ProductKey $Windows2008R2Key -SKUEdition "ServerDataCenterCore";
+        Start-ImageFactory -FriendlyName "Windows 8.1 Professional" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 8.1 Professional - Gen 2" -ISOFile $81x64Image -ProductKey $Windows81Key -SKUEdition "Professional" -Generation2  -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 8.1 Professional - 32 bit" -ISOFile $81x86Image -ProductKey $Windows81Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+        Start-ImageFactory -FriendlyName "Windows 8 Professional" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 8 Professional - Gen 2" -ISOFile $8x64Image -ProductKey $Windows8Key -SKUEdition "Professional" -Generation2 -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 8 Professional - 32 bit" -ISOFile $8x86Image -ProductKey $Windows8Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+        Start-ImageFactory -FriendlyName "Windows 7 Enterprise" -ISOFile $7x64Image -ProductKey $Windows7Key -SKUEdition "Enterprise" -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 7 Enterprise - 32 bit" -ISOFile $7x86Image -ProductKey $Windows7Key -SKUEdition "Enterprise" -desktop $true -is32bit $true;
+        Start-ImageFactory -FriendlyName "Windows 10 Professional" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 10 Professional - Gen 2" -ISOFile $10x64Image -ProductKey $Windows10Key -SKUEdition "Professional" -Generation2 -desktop $true;
+        Start-ImageFactory -FriendlyName "Windows 10 Professional - 32 bit" -ISOFile $10x86Image -ProductKey $Windows10Key -SKUEdition "Professional" -desktop $true -is32bit $true;
+    }
 } else {
     If($myinvocation.InvocationName -eq '.') {
         Write-Host 'Start-ImageFactory is ready to use'
