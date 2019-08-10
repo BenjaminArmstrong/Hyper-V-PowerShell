@@ -3,7 +3,7 @@ Function Expand-VMConfig ($VMConfig) {
 
     write-host "VM Configuration Data"
     write-host "====================="
-    $tempVM | Select *
+    $tempVM | Select-Object *
 
     write-host "VM Network Adapters"
     write-host "====================="

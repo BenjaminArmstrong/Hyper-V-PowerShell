@@ -30,7 +30,7 @@ function Start-VMConnect
             if ($VMname.GetType().name -eq "VirtualMachine")
                {$VMID = $VMname.ID}
             else
-               {$VMID = (get-vm $VMname | Select -first 1).ID}
+               {$VMID = (get-vm $VMname | Select-Object -first 1).ID}
          
             # Start FreeRDP
             start-process $FreeRDPPath -ArgumentList "/v:localhost:2179 /vmconnect:$($VMID)"

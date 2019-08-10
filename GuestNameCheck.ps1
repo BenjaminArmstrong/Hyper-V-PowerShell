@@ -7,4 +7,4 @@
   
  # Check the trimmed and cleaned VM name against the guest OS name
  # If it is different, change the guest OS name and reboot
- if ($env:computername -ne $vmName) {(gwmi win32_computersystem).Rename($vmName); shutdown -r -t 0}
+ if ($env:computername -ne $vmName) {(Get-WmiObject win32_computersystem).Rename($vmName); shutdown -r -t 0}

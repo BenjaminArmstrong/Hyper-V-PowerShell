@@ -1,9 +1,9 @@
 $sourcePath = "F:\"
 $destinationPath = "D:\"
   
- (Get-ChildItem $sourcePath -Recurse | ?{$_.Attributes -ne "Directory"}).count
+ (Get-ChildItem $sourcePath -Recurse | Where-Object{$_.Attributes -ne "Directory"}).count
   
- Get-VM | %{
+ Get-VM | ForEach-Object{
   
     $VM = $_
   
@@ -29,7 +29,7 @@ $destinationPath = "D:\"
        Move-VMStorage -VM $VM -SmartPagingFilePath $newSmartPagingFilePath}
   
     # Go over each hard drive
-    $_.HardDrives | %{
+    $_.HardDrives | ForEach-Object{
        # Check the hard drive
        $currentHardDrivePath = $_.Path
   
@@ -40,4 +40,4 @@ $destinationPath = "D:\"
   
     }
   
-  (Get-ChildItem $sourcePath -Recurse | ?{$_.Attributes -ne "Directory"}).count
+  (Get-ChildItem $sourcePath -Recurse | Where-Object{$_.Attributes -ne "Directory"}).count
