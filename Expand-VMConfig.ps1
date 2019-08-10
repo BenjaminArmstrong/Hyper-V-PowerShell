@@ -1,5 +1,5 @@
 Function Expand-VMConfig ($VMConfig) {
-    $tempVM = (Compare-VM -Copy -Path $VMConfig -GenerateNewID).VM
+    $tempVM = (Compare-VM -Register -Path $VMConfig).VM
 
     write-host "VM Configuration Data"
     write-host "====================="
